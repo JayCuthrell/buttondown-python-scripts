@@ -1,7 +1,7 @@
 # buttondown-python-scripts
 Simple python scripts for using the Buttondown API
 
-Each python script was based on [examples from Buttondown](https://docs.buttondown.email/api-emails-introduction) and enrichment using Google Gemini (with significant errors) and tested in a virtual environment on OS Version: macOS 14.5 build 23F79 using omz and Python 3.12.4 with the following pip3 list
+Each python script was based on [examples from Buttondown](https://docs.buttondown.email/api-emails-introduction) and enrichment using Google Gemini (with significant errors) and tested in a virtual environment on OS Version: macOS 14.5 build 23F79 using omz (fa583cfb) and Python 3.12.4 with the following pip3 list
 
 - certifi            2024.7.4
 - charset-normalizer 3.3.2
