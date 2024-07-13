@@ -28,5 +28,5 @@ If you are not, [start here](https://www.studytonight.com/post/python-virtual-en
 
 This list will grow as my needs evolve for [Hot Fudge Daily](https://hot.fudge.org) newsletter grow and my API automation comfort increases.
 
-- get_email_list.py - pulls basic information that is readable in a terminal 
-- get_digest_6_days.py - gathers the format in a terminal that can be piped into a buffer i.e. ```python3 get_digest_6_days.py | pbcopy```
+- get_list.py - pulls basic information that is readable in a terminal 
+- get_digest.py - pulls recent posts to be piped into a buffer i.e. ```python3 get_digest.py | pbcopy```
