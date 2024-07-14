@@ -13,10 +13,15 @@ Each python script was based on [examples from Buttondown](https://docs.buttondo
 - MarkupSafe         2.1.5
 - pip                24.1.2
 - pyproject          1.3.1
+- python-dateutil    2.9.0.post0
 - python-dotenv      1.0.1
+- pytz               2024.1
 - requests           2.32.3
 - setuptools         70.3.0
+- six                1.16.0
 - urllib3            2.2.2
+- DateTime           5.5
+- zope.interface     6.4.post2
 
 ## Start here
 

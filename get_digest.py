@@ -1,8 +1,9 @@
 import requests
 import json
-from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 import os
+from dateutil.parser import parse
+from datetime import datetime, timedelta, timezone
 
 # Get a digest of recent emails from Buttondown
 
@@ -38,23 +39,24 @@ if response.status_code == 200:
     recent_emails = [
         email 
         for email in all_emails 
-        if datetime.fromisoformat(email['publish_date']) >= six_days_ago
+        if parse(email['publish_date']) >= six_days_ago
     ]
 
     # Enhanced console output
-    print("=" * 37)
-    print("Hot Fudge Daily Digest Edition (Last 6 Days):")
-    print("=" * 37)
+    print("-" * 3)
+    print(" " * 3)
+    print("# Hot Fudge Daily Digest")
+    print(" " * 3)
+    print("-" * 3)
 
     if recent_emails:
         for email in recent_emails:
             print(f"{email['body']}")
             print(" " * 3)
-            print("-" * 3)
+            print("{{ subscribe_form }}")
             print(" " * 3)
     else:
         print("No emails found within the last 6 days.")
 
 else:
     print(f"Error: API request failed with status code {response.status_code}")
-

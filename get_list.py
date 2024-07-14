@@ -2,7 +2,7 @@ import requests
 import json
 from dotenv import load_dotenv
 import os
-from datetime import datetime
+from dateutil.parser import parse
 
 # Get a list of the recent emails from Buttondown
 
@@ -33,7 +33,7 @@ if response.status_code == 200:
     # Sort emails by publish_date in descending order (newest first)
     sorted_emails = sorted(
         all_emails,
-        key=lambda email: datetime.fromisoformat(email["publish_date"]), 
+        key=lambda email: parse(email["publish_date"]), 
         reverse=True
     )
 
