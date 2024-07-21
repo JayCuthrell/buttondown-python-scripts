@@ -35,3 +35,10 @@ This list will grow as my needs evolve for [Hot Fudge Daily](https://hot.fudge.o
 
 - get_list.py - pulls basic information that is readable in a terminal 
 - get_digest.py - pulls recent posts to be piped into a buffer i.e. ```python3 get_digest.py | pbcopy```
+
+## JupyterLab 
+
+This list will grow as my newsletter analysis skils improve.
+
+- Topics.ipynb - a quick analysis of markdown format blog posts for words and frequency from my blog post [Finding My Nich (2024)](https://fudge.org/archive/finding-my-niche) 
+- stay tuned...
