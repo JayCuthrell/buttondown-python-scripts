@@ -1,3 +1,4 @@
+#!/bin/zsh
 rm -rf my_env
 python -m venv my_env
 source my_env/bin/activate
