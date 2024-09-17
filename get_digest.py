@@ -5,6 +5,20 @@ import os
 from dateutil.parser import parse
 from datetime import datetime, timedelta, timezone
 
+# Get today's date
+today = datetime.today()
+
+# Calculate the date 7 days ago
+seven_days_ago = today - timedelta(days=7)
+
+# Format the date in YYYY-MM-DD format
+formatted_date = seven_days_ago.strftime('%Y-%m-%d')
+
+# The variable to store the date
+date_seven_days_ago = formatted_date
+
+print(date_seven_days_ago)
+
 # Get a digest of recent emails from Buttondown
 
 # Load environment variables from .env file
@@ -24,8 +38,9 @@ headers = {
 BASE_URL = "https://api.buttondown.email"
 ENDPOINT = "/emails"
 METHOD = "GET"
+FILTERS = f"publish_date__start={date_seven_days_ago}&page=1&email_type=premium"
 
-response = requests.request(METHOD, f"{BASE_URL}/v1{ENDPOINT}", headers=headers)
+response = requests.request(METHOD, f"{BASE_URL}/v1{ENDPOINT}?{FILTERS}", headers=headers)
 
 if response.status_code == 200:
     data = json.loads(response.content)
