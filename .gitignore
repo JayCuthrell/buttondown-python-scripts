@@ -130,6 +130,7 @@ my_env/
 ENV/
 env.bak/
 venv.bak/
+python_history.txt
 
 # Spyder project settings
 .spyderproject
