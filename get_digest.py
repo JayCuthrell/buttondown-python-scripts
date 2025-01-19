@@ -66,7 +66,7 @@ if response.status_code == 200:
 
     if recent_emails:
         for email in recent_emails:
-            print(f"### {email['subject']}")
+            print(f"## {email['subject']}")
             print(" " * 1)
             print(f"{email['body']}")
             print(" " * 3)
