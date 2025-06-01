@@ -70,8 +70,6 @@ if response.status_code == 200:
             print(" " * 1)
             print(f"{email['body']}")
             print(" " * 3)
-            print("{{ subscribe_form }}")
-            print(" " * 3)
     else:
         print("No emails found within the last 6 days.")
 
