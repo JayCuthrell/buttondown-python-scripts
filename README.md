@@ -62,6 +62,7 @@ This list will grow as my needs evolve for [Hot Fudge Daily](https://hot.fudge.o
 - get_digest.py - pulls recent posts to be piped into a buffer i.e. ```python3 get_digest.py | pbcopy```
 - get_models.py - verify your Google Gemini API key is functional
 - linkedin_post_generator.py - pull most recent email and apply LinkedIn content strategy prompt using Gemini
+- parsing/*.py - odds and ends for handing rss and extracting elements from HTML
 
 ## JupyterLab 
 
