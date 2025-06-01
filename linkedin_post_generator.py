@@ -5,6 +5,21 @@ import os
 import google.generativeai as genai
 from datetime import datetime, timezone, timedelta
 
+from dateutil.parser import parse
+from datetime import datetime, timedelta, timezone
+
+# Get today's date
+today = datetime.today()
+
+# Calculate the date 7 days ago
+seven_days_ago = today - timedelta(days=7)
+
+# Format the date in YYYY-MM-DD format
+formatted_date = seven_days_ago.strftime('%Y-%m-%d')
+
+# The variable to store the date
+date_seven_days_ago = formatted_date
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -37,7 +52,7 @@ def get_latest_buttondown_email():
     # For now, we'll assume the default API call without specific filters might return
     # recent ones and we'll pick the absolute latest from the results.
     # A more robust approach might involve `?ordering=-publish_date&limit=1` if the API supports it.
-    FILTERS = f"page_size=1&email_type=public" # Attempt to get just one, the most recent
+    FILTERS = f"publish_date__start={date_seven_days_ago}&page=1&email_type=public" # Attempt to get just one, the most recent
 
     try:
         response = requests.request("GET", f"{BUTTONDOWN_BASE_URL}/v1{BUTTONDOWN_ENDPOINT}?{FILTERS}", headers=headers)
