@@ -86,12 +86,15 @@ def summarize_with_gemini(email_subject, email_body):
     The summary needs to be engaging, value-driven, and adhere to the "Repackage and React Strategy" for LinkedIn.
 
     Here are the key guidelines for the LinkedIn post:
-    - Include 2-4 insights or takeaways from the content.
+    - Include 2-4 insights or takeaways from the content that fits on the first few lines of a LinkedIn post to grab attention.
+    - Include a takeaway for each day of the week from the headings related content and be sure to include the emoji per day.
     - Make the value clear in the first two opening lines.
     - Open with your most interesting, eye-catching, or differentiated points.
     - Share something new or surprising in your opening lines.
     - Offer enough substance, perspective, and value without forcing a click.
     - Retain the original writing style of the email as much as possible.
+    - Include a list of all companies referenced in the content.
+    - Include the link to the post on https://hot.fudge.org
 
     ---
     Email Subject: {email_subject}
