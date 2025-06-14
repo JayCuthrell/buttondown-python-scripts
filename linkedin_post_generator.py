@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 today = datetime.today()
 
 # Calculate the date 7 days ago
-seven_days_ago = today - timedelta(days=7)
+seven_days_ago = today - timedelta(days=-1)
 
 # Format the date in YYYY-MM-DD format
 formatted_date = seven_days_ago.strftime('%Y-%m-%d')
@@ -52,7 +52,7 @@ def get_latest_buttondown_email():
     # For now, we'll assume the default API call without specific filters might return
     # recent ones and we'll pick the absolute latest from the results.
     # A more robust approach might involve `?ordering=-publish_date&limit=1` if the API supports it.
-    FILTERS = f"publish_date__start={date_seven_days_ago}&page=1&email_type=public" # Attempt to get just one, the most recent
+    FILTERS = f"&type=public&status=scheduled" # Attempt to get just one, the most recent
 
     try:
         response = requests.request("GET", f"{BUTTONDOWN_BASE_URL}/v1{BUTTONDOWN_ENDPOINT}?{FILTERS}", headers=headers)
@@ -95,6 +95,7 @@ def summarize_with_gemini(email_subject, email_body):
     - Retain the original writing style of the email as much as possible.
     - Include a list of all companies referenced in the content.
     - Include the link to the post on https://hot.fudge.org
+    - Do not use markdown style formatting such as asterisks or stars *
 
     ---
     Email Subject: {email_subject}
