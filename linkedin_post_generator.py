@@ -76,7 +76,7 @@ def get_latest_buttondown_email():
         print("Error decoding JSON response from Buttondown.")
         return None
 
-def summarize_with_gemini(email_subject, email_body):
+def summarize_with_gemini(email_subject, email_body, email_url):
     """
     Uses Google Gemini to summarize the email content for LinkedIn,
     retaining writing style and adhering to LinkedIn repackaging strategy.
@@ -95,7 +95,7 @@ def summarize_with_gemini(email_subject, email_body):
     - Remember that the content is in reference to at least five (5) company names at a minimum.
     - Determine each and every company mentioned in each and every techmeme.com URL by extracting each and every one of the company names from the headlines of the articles referenced.
     - Include an exhaustive alphabetically ordered list of each and every one of company names referenced in the techmeme.com linked articles.
-    - Include the link to the post on https://hot.fudge.org
+    - Include the link to the post {email_url} 
     - Do not use markdown style formatting such as asterisks or stars *
 
     ---
@@ -103,6 +103,8 @@ def summarize_with_gemini(email_subject, email_body):
     ---
     Email Body:
     {email_body}
+
+    Email URL: {email_url}
     ---
 
     Please provide a copy-paste ready LinkedIn post based on the above guidelines.
@@ -121,13 +123,13 @@ def main():
     if latest_email:
         subject = latest_email.get('subject', 'No Subject')
         body = latest_email.get('body', 'No Body Content')
-        email_url = latest_email.get('email_url', '#') # Get the direct URL of the email post
+        email_url = latest_email.get('absolute_url', '#') # Get the direct URL of the email post
 
         print("-" * 50)
         print("Generating LinkedIn Post for the Latest Email...")
         print("-" * 50)
 
-        linkedin_summary = summarize_with_gemini(subject, body)
+        linkedin_summary = summarize_with_gemini(subject, body, email_url)
 
         print("\n" * 2)
         print("Copy-Paste Ready LinkedIn Post:")
