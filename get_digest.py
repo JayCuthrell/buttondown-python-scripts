@@ -17,7 +17,7 @@ formatted_date = seven_days_ago.strftime('%Y-%m-%d')
 # The variable to store the date
 date_seven_days_ago = formatted_date
 
-print(date_seven_days_ago)
+# print(date_seven_days_ago)
 
 # Get a digest of recent emails from Buttondown
 
