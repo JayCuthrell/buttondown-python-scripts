@@ -41,7 +41,6 @@ def add_missing_alt_tags_from_figcaption(body: str) -> str:
         figcaption_tag = figure.find('figcaption')
 
         if img_tag and figcaption_tag and not img_tag.has_attr('alt'):
-            # Get figcaption text and replace double quotes with single quotes
             alt_text = figcaption_tag.get_text(strip=True).replace('"', "'")
             if alt_text:
                 img_tag['alt'] = alt_text
@@ -56,7 +55,7 @@ def add_missing_alt_tags_from_figcaption(body: str) -> str:
 
 def process_new_export():
     """
-    MODE 1: Processes a new Buttondown export from scratch.
+    MODE 1: Processes a new Buttondown export with an option for incremental processing.
     """
     print("\n--- Mode: Process New Buttondown Export ---")
     export_dir_str = input("Enter the path to the Buttondown export directory: ")
@@ -70,23 +69,37 @@ def process_new_export():
 
     output_dir = export_dir.parent / "emails_ready_for_import"
     output_dir.mkdir(exist_ok=True)
-    print(f"\nProcessed files will be saved in: {output_dir}")
+    
+    # --- New feature: Ask whether to skip existing files ---
+    skip_choice = input("Do you want to skip files that already exist in the output folder? (y/n): ").lower()
+    skip_existing = skip_choice == 'y'
+
+    print(f"\nProcessing files... Output will be in: {output_dir}")
 
     try:
+        processed_count = 0
+        skipped_count = 0
         with open(csv_path, mode='r', encoding='utf-8') as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
                 slug = row.get('slug')
-                if not slug: continue
-
-                print(f"\nProcessing email with slug: {slug}")
+                if not slug:
+                    continue
                 
-                # Get data and ensure it's safe for frontmatter
+                output_file = output_dir / f"{slug}.md"
+                
+                # --- New feature: Check if file exists and should be skipped ---
+                if skip_existing and output_file.exists():
+                    skipped_count += 1
+                    continue
+                
+                print(f"\nProcessing new email: {slug}")
+                processed_count += 1
+                
                 subject = row.get('subject', 'No Subject').replace('"', "'")
                 description = get_web_description(slug).replace('"', "'")
                 
                 source_md_path = emails_folder_path / f"{slug}.md"
-
                 if not source_md_path.is_file():
                     print(f"  > ERROR: Markdown file not found at {source_md_path}. Skipping.")
                     continue
@@ -102,8 +115,14 @@ date: {row.get('publish_date')}
 
 """
                 final_content = frontmatter + processed_body
-                (output_dir / f"{slug}.md").write_text(final_content, encoding='utf-8')
+                output_file.write_text(final_content, encoding='utf-8')
                 print(f"  > Successfully created: {slug}.md")
+        
+        print("\n--- Export Processing Complete! ---")
+        print(f"Processed {processed_count} new file(s).")
+        if skip_existing:
+            print(f"Skipped {skipped_count} existing file(s).")
+
 
     except Exception as e:
         print(f"\nAn unexpected error occurred: {e}")
@@ -135,7 +154,6 @@ def retry_failed_fetches():
         slug = md_file.stem
         print(f"\nRetrying email with slug: {slug}")
         
-        # Get new description and make it safe for frontmatter
         new_description = get_web_description(slug).replace('"', "'")
 
         if new_description != "Error fetching description." and new_description != "No description available.":
@@ -162,11 +180,12 @@ def fix_alt_tags_in_folder():
     updated_files_count = 0
     
     for md_file in import_dir.glob("*.md"):
-        print(f"Checking: {md_file.name}")
         original_content = md_file.read_text(encoding='utf-8')
         modified_content = add_missing_alt_tags_from_figcaption(original_content)
         
         if modified_content != original_content:
+            # Only print if a change was actually made
+            print(f"Checking: {md_file.name}")
             md_file.write_text(modified_content, encoding='utf-8')
             updated_files_count += 1
             print(f"  > UPDATED: {md_file.name}")
@@ -185,7 +204,7 @@ def main():
     
     while True:
         print("\nWhat would you like to do?")
-        print("  1. Process a new Buttondown export")
+        print("  1. Process a new Buttondown export (now with incremental processing)")
         print("  2. Retry failed descriptions in an 'emails_ready_for_import' folder")
         print("  3. Fix empty alt tags in an 'emails_ready_for_import' folder")
         print("  4. Exit")
