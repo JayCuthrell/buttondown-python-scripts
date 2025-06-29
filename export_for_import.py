@@ -5,32 +5,82 @@ from pathlib import Path
 import requests
 from bs4 import BeautifulSoup
 
-def get_web_description(slug: str) -> str:
+def sanitize_title(title: str) -> str:
     """
-    Fetches the meta description for a given slug from the online archive.
+    Removes emoji and cleans up leading/trailing/multiple whitespace from a string.
+    NOTE: This function is no longer used for the main title as of the permalink update,
+          but is kept for potential future use.
     """
-    archive_url = f"https://hot.fudge.org/archive/{slug}"
-    print(f"  > Fetching description from: {archive_url}")
+    emoji_pattern = re.compile(
+        "["
+        "\U0001F600-\U0001F64F"  # emoticons
+        "\U0001F300-\U0001F5FF"  # symbols & pictographs
+        "\U0001F680-\U0001F6FF"  # transport & map symbols
+        "\U0001F1E0-\U0001F1FF"  # flags (iOS)
+        "\U00002702-\U000027B0"
+        "\U000024C2-\U0001F251"
+        "]+",
+        flags=re.UNICODE,
+    )
+    no_emoji_title = emoji_pattern.sub(r'', title)
+    clean_title = " ".join(no_emoji_title.split())
+    return clean_title
+
+def _parse_description_from_response(response: requests.Response) -> str | None:
+    """Helper to parse description from a successful HTTP response."""
+    soup = BeautifulSoup(response.text, 'html.parser')
+    meta_tag = soup.find('meta', attrs={'name': 'description'})
+    if meta_tag and 'content' in meta_tag.attrs:
+        return meta_tag['content'].strip()
+    return None
+
+def get_web_description(slug: str, raw_title: str) -> str:
+    """
+    Fetches the meta description for a given slug. If the primary URL 404s,
+    it constructs and tries a fallback URL from the raw_title.
+    """
+    primary_url = f"https://hot.fudge.org/archive/{slug}"
+    print(f"  > Trying primary URL: {primary_url}")
+
     try:
-        response = requests.get(archive_url, timeout=15)
+        response = requests.get(primary_url, timeout=15)
         response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
-        meta_tag = soup.find('meta', attrs={'name': 'description'})
-
-        if meta_tag and 'content' in meta_tag.attrs:
-            return meta_tag['content'].strip()
+        description = _parse_description_from_response(response)
+        if description:
+            return description
         else:
-            print("  > WARNING: Meta description not found on the page.")
+            print("  > WARNING: Meta description not found on page.")
             return "No description available."
+            
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 404:
+            print(f"  > Primary URL not found (404).")
+            fallback_slug = raw_title.lower().replace(' ', '-')
+            fallback_url = f"https://hot.fudge.org/archive/{fallback_slug}"
+            print(f"  > Trying fallback URL with original title: {fallback_url}")
 
+            try:
+                fallback_response = requests.get(fallback_url, timeout=15)
+                fallback_response.raise_for_status()
+                description = _parse_description_from_response(fallback_response)
+                if description:
+                    return description
+                else:
+                    print("  > WARNING: Meta description not found on fallback page.")
+                    return "No description available."
+            except requests.exceptions.RequestException as fallback_e:
+                print(f"  > ERROR: Fallback failed. {fallback_e}")
+                return "Error fetching description."
+        else:
+            print(f"  > ERROR: Primary request failed. {e}")
+            return "Error fetching description."
     except requests.exceptions.RequestException as e:
-        print(f"  > ERROR: Could not fetch URL. {e}")
+        print(f"  > ERROR: Primary request failed. {e}")
         return "Error fetching description."
 
 def add_missing_alt_tags_from_figcaption(body: str) -> str:
     """
-    Parses an HTML string, finds img tags within figure tags, and uses the
-    accompanying figcaption text as the alt text if it's missing.
+    Parses HTML to find img tags in figures and uses figcaption text as alt text.
     """
     soup = BeautifulSoup(body, 'html.parser')
     figures = soup.find_all('figure')
@@ -49,13 +99,12 @@ def add_missing_alt_tags_from_figcaption(body: str) -> str:
     if replacements_made > 0:
         print(f"  > Fixed {replacements_made} missing alt tag(s) using figcaptions.")
         return str(soup)
-    
     return body
 
 
 def process_new_export():
     """
-    MODE 1: Processes a new Buttondown export with an option for incremental processing.
+    MODE 1: Processes a new Buttondown export, creating permalinks and keeping original titles.
     """
     print("\n--- Mode: Process New Buttondown Export ---")
     export_dir_str = input("Enter the path to the Buttondown export directory: ")
@@ -70,7 +119,6 @@ def process_new_export():
     output_dir = export_dir.parent / "emails_ready_for_import"
     output_dir.mkdir(exist_ok=True)
     
-    # --- New feature: Ask whether to skip existing files ---
     skip_choice = input("Do you want to skip files that already exist in the output folder? (y/n): ").lower()
     skip_existing = skip_choice == 'y'
 
@@ -88,7 +136,6 @@ def process_new_export():
                 
                 output_file = output_dir / f"{slug}.md"
                 
-                # --- New feature: Check if file exists and should be skipped ---
                 if skip_existing and output_file.exists():
                     skipped_count += 1
                     continue
@@ -96,8 +143,16 @@ def process_new_export():
                 print(f"\nProcessing new email: {slug}")
                 processed_count += 1
                 
-                subject = row.get('subject', 'No Subject').replace('"', "'")
-                description = get_web_description(slug).replace('"', "'")
+                # --- New Logic for Title and Permalink ---
+                raw_subject = row.get('subject', 'No Subject')
+                
+                # Title is the original subject, with quotes sanitized
+                final_title = raw_subject.replace('"', "'")
+                
+                # Permalink is generated from the clean slug in the CSV
+                permalink = f"/archive/{slug}/"
+                
+                description = get_web_description(slug, raw_subject).replace('"', "'")
                 
                 source_md_path = emails_folder_path / f"{slug}.md"
                 if not source_md_path.is_file():
@@ -107,8 +162,10 @@ def process_new_export():
                 original_body = source_md_path.read_text(encoding='utf-8')
                 processed_body = add_missing_alt_tags_from_figcaption(original_body)
                 
+                # --- Updated Frontmatter Structure ---
                 frontmatter = f"""---
-title: "{subject}"
+title: "{final_title}"
+permalink: "{permalink}"
 description: "{description}"
 date: {row.get('publish_date')}
 ---
@@ -152,12 +209,15 @@ def retry_failed_fetches():
     print(f"Found {len(files_to_retry)} file(s) to retry.")
     for md_file in files_to_retry:
         slug = md_file.stem
+        content = md_file.read_text(encoding='utf-8')
+        title_match = re.search(r'^title:\s*"(.*?)"', content, re.MULTILINE)
+        title = title_match.group(1) if title_match else ""
+
         print(f"\nRetrying email with slug: {slug}")
         
-        new_description = get_web_description(slug).replace('"', "'")
+        new_description = get_web_description(slug, title).replace('"', "'")
 
         if new_description != "Error fetching description." and new_description != "No description available.":
-            content = md_file.read_text(encoding='utf-8')
             new_desc_line = f'description: "{new_description}"'
             updated_content = re.sub(r'^description:.*$', new_desc_line, content, count=1, flags=re.MULTILINE)
             md_file.write_text(updated_content, encoding='utf-8')
@@ -184,7 +244,6 @@ def fix_alt_tags_in_folder():
         modified_content = add_missing_alt_tags_from_figcaption(original_content)
         
         if modified_content != original_content:
-            # Only print if a change was actually made
             print(f"Checking: {md_file.name}")
             md_file.write_text(modified_content, encoding='utf-8')
             updated_files_count += 1
@@ -204,7 +263,7 @@ def main():
     
     while True:
         print("\nWhat would you like to do?")
-        print("  1. Process a new Buttondown export (now with incremental processing)")
+        print("  1. Process new export (creates permalinks, keeps emoji in titles)")
         print("  2. Retry failed descriptions in an 'emails_ready_for_import' folder")
         print("  3. Fix empty alt tags in an 'emails_ready_for_import' folder")
         print("  4. Exit")
