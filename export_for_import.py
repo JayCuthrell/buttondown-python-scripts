@@ -9,6 +9,13 @@ from dateutil.parser import parse as parse_date
 
 # --- Helper Functions ---
 
+def _print_content_to_screen(content: str):
+    """Helper function to format and print final content to the console."""
+    print("\n" + "="*50)
+    print("--- FINALIZED MARKDOWN FOR LATEST EMAIL ---")
+    print("="*50 + "\n")
+    print(content)
+
 def sanitize_title(title: str) -> str:
     """
     Removes emoji and cleans up leading/trailing/multiple whitespace from a string.
@@ -43,6 +50,7 @@ def get_web_description(slug: str, raw_title: str = "") -> str:
     Fetches the meta description. If the primary URL 404s and a raw_title is provided,
     it constructs and tries a fallback URL.
     """
+    # --- UPDATED URL ---
     primary_url = f"https://buttondown.com/hot-fudge-daily/archive/{slug}"
     print(f"  > Trying primary URL: {primary_url}", flush=True)
 
@@ -56,7 +64,8 @@ def get_web_description(slug: str, raw_title: str = "") -> str:
         if e.response.status_code == 404 and raw_title:
             print(f"  > Primary URL not found (404).", flush=True)
             fallback_slug = raw_title.lower().replace(' ', '-')
-            fallback_url = f"https://hot.fudge.org/archive/{fallback_slug}"
+            # --- UPDATED FALLBACK URL ---
+            fallback_url = f"https://buttondown.com/hot-fudge-daily/archive/{fallback_slug}"
             print(f"  > Trying fallback URL with original title: {fallback_url}", flush=True)
 
             try:
@@ -92,10 +101,8 @@ def add_missing_alt_tags_from_figcaption(body: str) -> str:
 
     if replacements_made > 0:
         print(f"  > Fixed {replacements_made} missing alt tag(s) using figcaptions.", flush=True)
-        # Use prettify() to get a string representation of the modified soup
         return soup.prettify()
     return body
-
 
 # --- Main Operating Modes ---
 
@@ -168,26 +175,79 @@ date: {row.get('publish_date')}
         if skip_existing:
             print(f"Skipped {skipped_count} existing file(s).")
 
-
     except Exception as e:
         print(f"\nAn unexpected error occurred: {e}")
 
 def retry_failed_fetches():
     """MODE 2: Retries fetching descriptions for previously failed files."""
     print("\n--- Mode: Retry Failed Descriptions ---")
-    # ... (code for this function remains the same, but is included in the full script)
-    pass
+    import_dir_str = input("Enter the path to the 'emails_ready_for_import' directory: ")
+    import_dir = Path(import_dir_str).expanduser()
+    if not import_dir.is_dir():
+        print(f"\nERROR: The directory '{import_dir}' does not exist.")
+        return
+
+    print(f"\nScanning for files with errors in: {import_dir}")
+    error_string_to_find = 'description: "Error fetching description."'
+    files_to_retry = [
+        md_file for md_file in import_dir.glob("*.md")
+        if error_string_to_find in md_file.read_text(encoding='utf-8')
+    ]
+    
+    if not files_to_retry:
+        print("No files with fetching errors were found.")
+        return
+
+    print(f"Found {len(files_to_retry)} file(s) to retry.")
+    for md_file in files_to_retry:
+        slug = md_file.stem
+        content = md_file.read_text(encoding='utf-8')
+        title_match = re.search(r'^title:\s*"(.*?)"', content, re.MULTILINE)
+        title = title_match.group(1) if title_match else ""
+
+        print(f"\nRetrying email with slug: {slug}")
+        
+        new_description = get_web_description(slug, title).replace('"', "'")
+
+        if new_description != "Error fetching description." and new_description != "No description available.":
+            new_desc_line = f'description: "{new_description}"'
+            updated_content = re.sub(r'^description:.*$', new_desc_line, content, count=1, flags=re.MULTILINE)
+            md_file.write_text(updated_content, encoding='utf-8')
+            print(f"  > SUCCESS: Updated {md_file.name}")
+        else:
+            print(f"  > FAILED: Could not retrieve a new description for {slug}.")
 
 def fix_alt_tags_in_folder():
-    """MODE 3: Scans an import-ready folder and fixes missing alt tags."""
+    """MODE 3: Scans an import-ready folder and fixes missing alt tags in place using figcaptions."""
     print("\n--- Mode: Fix Empty Alt Tags ---")
-    # ... (code for this function remains the same, but is included in the full script)
-    pass
+    import_dir_str = input("Enter the path to the 'emails_ready_for_import' directory: ")
+    import_dir = Path(import_dir_str).expanduser()
+    if not import_dir.is_dir():
+        print(f"\nERROR: The directory '{import_dir}' does not exist.")
+        return
 
+    print(f"\nScanning for missing alt tags in: {import_dir}")
+    updated_files_count = 0
+    
+    for md_file in import_dir.glob("*.md"):
+        original_content = md_file.read_text(encoding='utf-8')
+        modified_content = add_missing_alt_tags_from_figcaption(original_content)
+        
+        if modified_content != original_content:
+            print(f"Checking: {md_file.name}")
+            md_file.write_text(modified_content, encoding='utf-8')
+            updated_files_count += 1
+            print(f"  > UPDATED: {md_file.name}")
 
-def sync_latest_to_stdout():
-    """MODE 4: Fetches the latest email from the Buttondown API and prints formatted content."""
-    print("\n--- Mode: Sync Latest Email to Standard Out ---")
+    print("\n--- Alt Tag Fix Complete! ---")
+    if updated_files_count > 0:
+        print(f"Successfully updated {updated_files_count} file(s).")
+    else:
+        print("No files needed fixing.")
+
+def sync_latest_from_api():
+    """MODE 4: Fetches the latest email from the API and prints or saves it."""
+    print("\n--- Mode: Sync Latest Email ---")
     
     load_dotenv()
     BUTTONDOWN_API_KEY = os.getenv("BUTTONDOWN_API_KEY")
@@ -198,6 +258,7 @@ def sync_latest_to_stdout():
         return
 
     headers = {"Authorization": f"Token {BUTTONDOWN_API_KEY}"}
+    # --- UPDATED URL ---
     url = "https://api.buttondown.email/v1/emails?&page=1&email_type=premium"
 
     try:
@@ -220,14 +281,12 @@ def sync_latest_to_stdout():
         permalink = f"/archive/{slug}/"
         description = get_web_description(slug, raw_subject).replace('"', "'")
         
-        # Parse and reformat the date to match the file-based export
         publish_date_obj = parse_date(latest_email.get('publish_date'))
         formatted_date = publish_date_obj.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] + '+00:00'
         
         original_body = latest_email.get('body', '')
         processed_body = add_missing_alt_tags_from_figcaption(original_body)
         
-        # Ensure frontmatter format is identical to file-based processing
         frontmatter = f"""---
 title: "{final_title}"
 permalink: "{permalink}"
@@ -238,10 +297,22 @@ date: {formatted_date}
 """
         final_content = frontmatter + processed_body
 
-        print("\n" + "="*50)
-        print("--- FINALIZED MARKDOWN FOR LATEST EMAIL ---")
-        print("="*50 + "\n")
-        print(final_content)
+        output_dir_str = input("\nEnter a directory path to save the file (or press Enter to print to screen): ").strip()
+
+        if output_dir_str:
+            output_dir = Path(output_dir_str).expanduser()
+            if output_dir.is_dir():
+                output_file = output_dir / f"{slug}.md"
+                try:
+                    output_file.write_text(final_content, encoding='utf-8')
+                    print(f"\nSuccessfully saved file to: {output_file}")
+                except Exception as e:
+                    print(f"\nERROR: Could not write file. {e}")
+            else:
+                print(f"\nERROR: '{output_dir_str}' is not a valid directory. Printing to screen instead.")
+                _print_content_to_screen(final_content)
+        else:
+            _print_content_to_screen(final_content)
 
     except requests.exceptions.RequestException as e:
         print(f"API request failed: {e}")
@@ -260,7 +331,7 @@ def main():
         print("  1. Process new export (creates permalinks, keeps emoji in titles)")
         print("  2. Retry failed descriptions in an 'emails_ready_for_import' folder")
         print("  3. Fix empty alt tags in an 'emails_ready_for_import' folder")
-        print("  4. Sync the latest email to standard out (via API)")
+        print("  4. Sync latest email and save to file (via API)")
         print("  5. Exit")
         choice = input("Enter your choice (1, 2, 3, 4, or 5): ")
 
@@ -274,7 +345,7 @@ def main():
             fix_alt_tags_in_folder()
             break
         elif choice == '4':
-            sync_latest_to_stdout()
+            sync_latest_from_api()
             break
         elif choice == '5':
             print("Exiting.")
