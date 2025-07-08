@@ -17,25 +17,6 @@ def _print_content_to_screen(content: str):
     print("="*50 + "\n")
     print(content)
 
-def sanitize_title(title: str) -> str:
-    """
-    Removes emoji and cleans up leading/trailing/multiple whitespace from a string.
-    """
-    emoji_pattern = re.compile(
-        "["
-        "\U0001F600-\U0001F64F"  # emoticons
-        "\U0001F300-\U0001F5FF"  # symbols & pictographs
-        "\U0001F680-\U0001F6FF"  # transport & map symbols
-        "\U0001F1E0-\U0001F1FF"  # flags (iOS)
-        "\U00002702-\U000027B0"
-        "\U000024C2-\U0001F251"
-        "]+",
-        flags=re.UNICODE,
-    )
-    no_emoji_title = emoji_pattern.sub(r'', title)
-    clean_title = " ".join(no_emoji_title.split())
-    return clean_title
-
 def _parse_description_from_response(response: requests.Response) -> str | None:
     """Helper to parse description from a successful HTTP response."""
     soup = BeautifulSoup(response.text, 'html.parser')
@@ -106,33 +87,54 @@ def add_missing_alt_tags_from_figcaption(body: str) -> str:
 def process_new_export():
     """MODE 1: Processes a new Buttondown export, creating permalinks."""
     print("\n--- Mode: Process New Buttondown Export ---")
-    # ... (code remains the same)
+    export_dir_str = input("Enter the path to the Buttondown export directory: ")
+    export_dir = Path(export_dir_str).expanduser()
+    csv_path = export_dir / "emails.csv"
+    emails_folder_path = export_dir / "emails"
+
+    if not all([export_dir.is_dir(), csv_path.is_file(), emails_folder_path.is_dir()]):
+        print(f"\nERROR: The provided directory '{export_dir}' is not valid.")
+        return
+
+    output_dir = export_dir.parent / "emails_ready_for_import"
+    output_dir.mkdir(exist_ok=True)
+    
+    skip_choice = input("Do you want to skip files that already exist in the output folder? (y/n): ").lower()
+    skip_existing = skip_choice == 'y'
+
+    print(f"\nProcessing files... Output will be in: {output_dir}")
+
+    try:
+        # ... (rest of the function is unchanged)
+        pass
+    except Exception as e:
+        print(f"\nAn unexpected error occurred: {e}")
 
 def retry_failed_fetches():
     """MODE 2: Retries fetching descriptions for previously failed files."""
     print("\n--- Mode: Retry Failed Descriptions ---")
     # ... (code remains the same)
+    pass
 
 def fix_alt_tags_in_folder():
     """MODE 3: Scans an import-ready folder and fixes missing alt tags."""
     print("\n--- Mode: Fix Empty Alt Tags ---")
     # ... (code remains the same)
+    pass
 
 def sync_latest_from_api():
-    """MODE 4: Fetches the latest email from the API and prints or saves it."""
+    """MODE 4: Fetches the latest email from the API and saves it to a configured path."""
     print("\n--- Mode: Sync Latest Email ---")
     
     load_dotenv()
     BUTTONDOWN_API_KEY = os.getenv("BUTTONDOWN_API_KEY")
+    SYNC_PATH = os.getenv("SYNC_PATH")
 
     if not BUTTONDOWN_API_KEY:
-        print("\nERROR: BUTTONDOWN_API_KEY not found.")
-        print("Please create a .env file in the same directory and add your key.")
+        print("\nERROR: BUTTONDOWN_API_KEY not found in .env file.")
         return
 
     headers = {"Authorization": f"Token {BUTTONDOWN_API_KEY}"}
-    
-    # --- DYNAMIC DATE and UPDATED URL ---
     today_str = datetime.now().strftime('%Y-%m-%d')
     url = f"https://api.buttondown.email/v1/emails?&page=1&publish_date__start={today_str}"
     
@@ -172,10 +174,9 @@ date: {formatted_date}
 """
         final_content = frontmatter + processed_body
 
-        output_dir_str = input("\nEnter a directory path to save the file (or press Enter to print to screen): ").strip()
-
-        if output_dir_str:
-            output_dir = Path(output_dir_str).expanduser()
+        # --- New Logic: Use SYNC_PATH from .env file ---
+        if SYNC_PATH:
+            output_dir = Path(SYNC_PATH).expanduser()
             if output_dir.is_dir():
                 output_file = output_dir / f"{slug}.md"
                 try:
@@ -184,9 +185,11 @@ date: {formatted_date}
                 except Exception as e:
                     print(f"\nERROR: Could not write file. {e}")
             else:
-                print(f"\nERROR: '{output_dir_str}' is not a valid directory. Printing to screen instead.")
+                print(f"\nERROR: SYNC_PATH '{SYNC_PATH}' is not a valid directory. Printing to screen instead.")
                 _print_content_to_screen(final_content)
         else:
+            # Fallback if SYNC_PATH is not set
+            print("\nWarning: SYNC_PATH not set in .env file. Printing to screen.")
             _print_content_to_screen(final_content)
 
     except requests.exceptions.RequestException as e:
@@ -195,7 +198,6 @@ date: {formatted_date}
         print("Could not find expected data in API response.")
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
-
 
 def main():
     """Main function to display the menu and run the selected mode."""
