@@ -282,7 +282,8 @@ def sync_latest_from_api():
         
         print("\nWhich day would you like to sync?")
         
-        for i in range(today.weekday()):
+        # Iterate from Monday (0) up to and including today
+        for i in range(today.weekday() + 1):
             day_to_check = start_of_week + timedelta(days=i)
             day_name = day_to_check.strftime('%A')
             date_str = day_to_check.strftime('%Y-%m-%d')
@@ -330,11 +331,11 @@ def sync_latest_from_api():
         final_title = raw_subject.replace('"', "'")
         permalink = f"/archive/{slug}/"
         
-        # --- FIX: Use the date from the subject line for consistency ---
         date_match = re.search(r'(\d{4}-\d{2}-\d{2})', raw_subject)
         if date_match:
             formatted_date = date_match.group(1)
         else:
+            # Fallback to the publish_date if the subject doesn't have a date
             formatted_date = parse_date(email_to_sync.get('publish_date')).strftime('%Y-%m-%d')
         
         processed_body = process_html_body(original_body)
@@ -399,7 +400,12 @@ def create_daily_emails():
                 date_str = day_to_create.strftime('%Y-%m-%d')
                 subject = f"{daily_formats[day_name_index]} {date_str}"
                 
-                payload = { "subject": subject, "body": f"Content for {subject} goes here.", "status": "draft", "email_type": "premium" }
+                payload = { 
+                    "subject": subject, 
+                    "body": f"Content for {subject} goes here.", 
+                    "status": "draft",
+                    "email_type": "premium"
+                }
 
                 try:
                     print(f" > Creating email: '{subject}'")
@@ -419,7 +425,12 @@ def create_daily_emails():
         date_str = today.strftime('%Y-%m-%d')
         subject = f"{daily_formats[current_weekday]} {date_str}"
         
-        payload = { "subject": subject, "body": f"Content for {subject} goes here.", "status": "draft" }
+        payload = { 
+            "subject": subject, 
+            "body": f"Content for {subject} goes here.", 
+            "status": "draft",
+            "email_type": "premium"
+        }
 
         try:
             print(f" > Creating email: '{subject}'")
