@@ -282,7 +282,6 @@ def sync_latest_from_api():
         
         print("\nWhich day would you like to sync?")
         
-        # Iterate from Monday (0) up to and including today
         for i in range(today.weekday() + 1):
             day_to_check = start_of_week + timedelta(days=i)
             day_name = day_to_check.strftime('%A')
@@ -292,7 +291,8 @@ def sync_latest_from_api():
 
             if email_for_day:
                 slug = email_for_day.get('slug')
-                expected_file = SYNC_PATH / f"{slug}.md"
+                day_directory = SYNC_PATH / day_name
+                expected_file = day_directory / f"{slug}.md"
                 status = "[Synced]" if expected_file.exists() else "[Missing]"
                 
                 if status == "[Missing]":
@@ -335,7 +335,6 @@ def sync_latest_from_api():
         if date_match:
             formatted_date = date_match.group(1)
         else:
-            # Fallback to the publish_date if the subject doesn't have a date
             formatted_date = parse_date(email_to_sync.get('publish_date')).strftime('%Y-%m-%d')
         
         processed_body = process_html_body(original_body)
@@ -350,7 +349,11 @@ date: {formatted_date}
 """
         final_content = frontmatter + processed_body
         
-        output_file = SYNC_PATH / f"{slug}.md"
+        day_name_for_saving = parse_date(formatted_date).strftime('%A')
+        output_dir = SYNC_PATH / day_name_for_saving
+        output_dir.mkdir(exist_ok=True)
+        
+        output_file = output_dir / f"{slug}.md"
         try:
             output_file.write_text(final_content, encoding='utf-8')
             print(f"  > Successfully saved file to: {output_file}")
@@ -451,18 +454,64 @@ def create_sunday_digest():
     print("\n--- Mode: Create Hot Fudge Sunday Digest ---")
     
     today = datetime.now()
-    if today.weekday() != 6:
-        print("This feature is designed to be run on a Sunday.")
+    if today.weekday() not in [5, 6]:
+        print("This feature is designed to be run on a Saturday or Sunday.")
         return
 
     load_dotenv()
     BUTTONDOWN_API_KEY = os.getenv("BUTTONDOWN_API_KEY")
-    if not BUTTONDOWN_API_KEY:
-        print("\nERROR: BUTTONDOWN_API_KEY not found in .env file.")
+    SYNC_PATH_STR = os.getenv("SYNC_PATH")
+
+    if not all([BUTTONDOWN_API_KEY, SYNC_PATH_STR]):
+        print("\nERROR: BUTTONDOWN_API_KEY or SYNC_PATH not found in .env file.")
+        return
+
+    SYNC_PATH = Path(SYNC_PATH_STR).expanduser()
+    if not SYNC_PATH.is_dir():
+        print(f"\nERROR: SYNC_PATH '{SYNC_PATH_STR}' is not a valid directory.")
         return
 
     headers = {"Authorization": f"Token {BUTTONDOWN_API_KEY}"}
-    
+    start_of_week = today - timedelta(days=today.weekday())
+
+    url = f"https://api.buttondown.email/v1/emails?email_type=premium&publish_date__start={start_of_week.strftime('%Y-%m-%d')}"
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        api_emails = response.json().get("results", [])
+    except requests.exceptions.RequestException as e:
+        print(f"  - ERROR fetching weekly emails for validation: {e}")
+        return
+
+    if today.weekday() == 5:
+        print(" > It's Saturday. Checking if all weekly posts are synced before creating digest...")
+        all_synced = True
+        for i in range(6):
+            day_to_check = start_of_week + timedelta(days=i)
+            day_name = day_to_check.strftime('%A')
+            date_str = day_to_check.strftime('%Y-%m-%d')
+
+            email_for_day = next((e for e in api_emails if day_name in e.get('subject', '') and date_str in e.get('subject', '')), None)
+
+            if not email_for_day:
+                print(f"  - MISSING: No email published for {day_name}.")
+                all_synced = False
+                break
+            else:
+                slug = email_for_day.get('slug')
+                day_directory = SYNC_PATH / day_name
+                expected_file = day_directory / f"{slug}.md"
+                if not expected_file.exists():
+                    print(f"  - MISSING: Local file for {day_name} ('{slug}.md') not found.")
+                    all_synced = False
+                    break
+        
+        if not all_synced:
+            print("\nCannot create digest. Not all posts for the week have been synced locally.")
+            return
+        else:
+            print(" > All weekly posts are synced. Proceeding with digest creation.")
+
     last_monday = today - timedelta(days=today.weekday())
     last_saturday = last_monday + timedelta(days=5)
     
@@ -556,7 +605,7 @@ def main():
         print("  3. Fix empty alt tags & comments")
         print("  4. Sync missing emails from this week")
         print("  5. Create skeleton email(s)")
-        print("  6. Create Hot Fudge Sunday digest")
+        print("  6. Create Hot Fudge Sunday digest (Sat/Sun)")
         print("  7. Exit")
         choice = input("Enter your choice: ")
 
