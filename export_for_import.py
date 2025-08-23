@@ -83,7 +83,6 @@ def process_html_body(body: str) -> str:
     comments = soup.find_all(string=lambda text: isinstance(text, Comment))
     if comments:
         body_was_modified = True
-        print(f"  > Removed {len(comments)} HTML comment(s).", flush=True)
         for comment in comments:
             comment.extract()
 
@@ -250,39 +249,77 @@ def fix_alt_tags_in_folder():
 
 
 def sync_latest_from_api():
-    """MODE 4: Fetches the latest email from the API and saves it to a configured path."""
-    print("\n--- Mode: Sync Latest Email ---")
+    """MODE 4: Fetches emails from the API for the current week and allows syncing of missing ones."""
+    print("\n--- Mode: Sync Email from API ---")
     
     load_dotenv()
     BUTTONDOWN_API_KEY = os.getenv("BUTTONDOWN_API_KEY")
-    SYNC_PATH = os.getenv("SYNC_PATH")
+    SYNC_PATH_STR = os.getenv("SYNC_PATH")
 
-    if not BUTTONDOWN_API_KEY:
-        print("\nERROR: BUTTONDOWN_API_KEY not found in .env file.")
+    if not all([BUTTONDOWN_API_KEY, SYNC_PATH_STR]):
+        print("\nERROR: BUTTONDOWN_API_KEY or SYNC_PATH not found in .env file.")
         return
 
+    SYNC_PATH = Path(SYNC_PATH_STR).expanduser()
+    if not SYNC_PATH.is_dir():
+        print(f"\nERROR: SYNC_PATH '{SYNC_PATH_STR}' is not a valid directory.")
+        return
+
+    today = datetime.now()
+    start_of_week = today - timedelta(days=today.weekday())
+    
     headers = {"Authorization": f"Token {BUTTONDOWN_API_KEY}"}
-    today_str = datetime.now().strftime('%Y-%m-%d')
-    url = f"https://api.buttondown.email/v1/emails?&page=1&publish_date__start={today_str}"
+    url = f"https://api.buttondown.email/v1/emails?email_type=premium&publish_date__start={start_of_week.strftime('%Y-%m-%d')}"
     
     try:
-        print(f" > Fetching emails from Buttondown API for today ({today_str})...", flush=True)
+        print(f" > Checking for missing emails for the week of {start_of_week.strftime('%Y-%m-%d')}...", flush=True)
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         
-        emails = response.json()["results"]
-        if not emails:
-            print("No emails found for today.")
+        api_emails = response.json().get("results", [])
+        
+        missing_emails_map = {}
+        
+        print("\nWhich day would you like to sync?")
+        
+        for i in range(today.weekday()):
+            day_to_check = start_of_week + timedelta(days=i)
+            day_name = day_to_check.strftime('%A')
+            date_str = day_to_check.strftime('%Y-%m-%d')
+            
+            email_for_day = next((e for e in api_emails if day_name in e.get('subject', '') and date_str in e.get('subject', '')), None)
+
+            if email_for_day:
+                slug = email_for_day.get('slug')
+                expected_file = SYNC_PATH / f"{slug}.md"
+                status = "[Synced]" if expected_file.exists() else "[Missing]"
+                
+                if status == "[Missing]":
+                    missing_emails_map[i + 1] = email_for_day
+
+                print(f"  {i + 1}. {day_name} ({date_str}) - {status} - \"{email_for_day['subject']}\"")
+            else:
+                print(f"  {i + 1}. {day_name} ({date_str}) - [No Email Published]")
+
+        if not missing_emails_map:
+            print("\nNo missing emails found to sync.")
             return
 
-        latest_email = sorted(emails, key=lambda x: x['publish_date'], reverse=True)[0]
-        print(f" > Found latest email: '{latest_email['subject']}'", flush=True)
+        choice = input("\nEnter the number of the day to sync (or press Enter to cancel): ").strip()
 
-        raw_subject = latest_email.get('subject', 'No Subject')
-        slug = latest_email.get('slug', '')
-        original_body = latest_email.get('body', '')
+        if not choice.isdigit() or int(choice) not in missing_emails_map:
+            print("Invalid selection or nothing to sync. Exiting.")
+            return
+            
+        email_to_sync = missing_emails_map[int(choice)]
+
+        print(f"\n > Processing email: '{email_to_sync['subject']}'")
+
+        raw_subject = email_to_sync.get('subject', 'No Subject')
+        slug = email_to_sync.get('slug', '')
+        original_body = email_to_sync.get('body', '')
         
-        description = latest_email.get('description')
+        description = email_to_sync.get('description')
         if not description:
             print("  > API 'description' not found. Generating from email body...", flush=True)
             description = _generate_description_from_body(original_body)
@@ -293,8 +330,12 @@ def sync_latest_from_api():
         final_title = raw_subject.replace('"', "'")
         permalink = f"/archive/{slug}/"
         
-        publish_date_obj = parse_date(latest_email.get('publish_date'))
-        formatted_date = publish_date_obj.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] + '+00:00'
+        # --- FIX: Use the date from the subject line for consistency ---
+        date_match = re.search(r'(\d{4}-\d{2}-\d{2})', raw_subject)
+        if date_match:
+            formatted_date = date_match.group(1)
+        else:
+            formatted_date = parse_date(email_to_sync.get('publish_date')).strftime('%Y-%m-%d')
         
         processed_body = process_html_body(original_body)
         
@@ -307,27 +348,16 @@ date: {formatted_date}
 
 """
         final_content = frontmatter + processed_body
-
-        if SYNC_PATH:
-            output_dir = Path(SYNC_PATH).expanduser()
-            if output_dir.is_dir():
-                output_file = output_dir / f"{slug}.md"
-                try:
-                    output_file.write_text(final_content, encoding='utf-8')
-                    print(f"\nSuccessfully saved file to: {output_file}")
-                except Exception as e:
-                    print(f"\nERROR: Could not write file. {e}")
-            else:
-                print(f"\nERROR: SYNC_PATH '{SYNC_PATH}' is not a valid directory. Printing to screen instead.")
-                _print_content_to_screen(final_content)
-        else:
-            print("\nWarning: SYNC_PATH not set in .env file. Printing to screen.")
-            _print_content_to_screen(final_content)
+        
+        output_file = SYNC_PATH / f"{slug}.md"
+        try:
+            output_file.write_text(final_content, encoding='utf-8')
+            print(f"  > Successfully saved file to: {output_file}")
+        except Exception as e:
+            print(f"  > ERROR: Could not write file. {e}")
 
     except requests.exceptions.RequestException as e:
         print(f"API request failed: {e}")
-    except (KeyError, IndexError):
-        print("Could not find expected data in API response.")
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
 
@@ -369,7 +399,7 @@ def create_daily_emails():
                 date_str = day_to_create.strftime('%Y-%m-%d')
                 subject = f"{daily_formats[day_name_index]} {date_str}"
                 
-                payload = { "subject": subject, "body": f"Content for {subject} goes here.", "status": "draft" }
+                payload = { "subject": subject, "body": f"Content for {subject} goes here.", "status": "draft", "email_type": "premium" }
 
                 try:
                     print(f" > Creating email: '{subject}'")
@@ -513,7 +543,7 @@ def main():
         print("  1. Process new export")
         print("  2. Retry failed descriptions")
         print("  3. Fix empty alt tags & comments")
-        print("  4. Sync latest email and save to file")
+        print("  4. Sync missing emails from this week")
         print("  5. Create skeleton email(s)")
         print("  6. Create Hot Fudge Sunday digest")
         print("  7. Exit")
