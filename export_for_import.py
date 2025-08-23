@@ -471,40 +471,20 @@ def create_sunday_digest():
         print(f"\nERROR: SYNC_PATH '{SYNC_PATH_STR}' is not a valid directory.")
         return
 
-    headers = {"Authorization": f"Token {BUTTONDOWN_API_KEY}"}
     start_of_week = today - timedelta(days=today.weekday())
-
-    url = f"https://api.buttondown.email/v1/emails?email_type=premium&publish_date__start={start_of_week.strftime('%Y-%m-%d')}"
-    try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        api_emails = response.json().get("results", [])
-    except requests.exceptions.RequestException as e:
-        print(f"  - ERROR fetching weekly emails for validation: {e}")
-        return
-
+    
     if today.weekday() == 5:
         print(" > It's Saturday. Checking if all weekly posts are synced before creating digest...")
         all_synced = True
         for i in range(6):
             day_to_check = start_of_week + timedelta(days=i)
             day_name = day_to_check.strftime('%A')
-            date_str = day_to_check.strftime('%Y-%m-%d')
-
-            email_for_day = next((e for e in api_emails if day_name in e.get('subject', '') and date_str in e.get('subject', '')), None)
-
-            if not email_for_day:
-                print(f"  - MISSING: No email published for {day_name}.")
+            day_directory = SYNC_PATH / day_name
+            
+            if not any(day_directory.iterdir()):
+                print(f"  - MISSING: No file found in the '{day_name}' directory.")
                 all_synced = False
                 break
-            else:
-                slug = email_for_day.get('slug')
-                day_directory = SYNC_PATH / day_name
-                expected_file = day_directory / f"{slug}.md"
-                if not expected_file.exists():
-                    print(f"  - MISSING: Local file for {day_name} ('{slug}.md') not found.")
-                    all_synced = False
-                    break
         
         if not all_synced:
             print("\nCannot create digest. Not all posts for the week have been synced locally.")
@@ -512,35 +492,34 @@ def create_sunday_digest():
         else:
             print(" > All weekly posts are synced. Proceeding with digest creation.")
 
-    last_monday = today - timedelta(days=today.weekday())
-    last_saturday = last_monday + timedelta(days=5)
-    
-    url = f"https://api.buttondown.email/v1/emails?email_type=premium&publish_date__start={last_monday.strftime('%Y-%m-%d')}&publish_date__end={last_saturday.strftime('%Y-%m-%d')}"
-    
-    try:
-        print("\n > Fetching posts from the past week...")
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        weekly_emails = sorted(response.json()['results'], key=lambda x: x['publish_date'])
+    digest_content_parts = []
+    print("\n > Fetching posts from the local SYNC_PATH...")
+    for i in range(6):
+        day_to_check = start_of_week + timedelta(days=i)
+        day_name = day_to_check.strftime('%A')
+        day_directory = SYNC_PATH / day_name
         
-        digest_content_parts = []
-        for email in weekly_emails:
-            cleaned_body = process_html_body(email['body'])
-            digest_content_parts.append(f"## {email['subject']}\n\n{cleaned_body}")
-        
-        digest_content = "\n\n---\n\n".join(digest_content_parts)
+        if day_directory.is_dir():
+            for md_file in day_directory.glob("*.md"):
+                content = md_file.read_text(encoding='utf-8')
+                # Extract subject from frontmatter
+                title_match = re.search(r'^title:\s*"(.*?)"', content, re.MULTILINE)
+                subject = title_match.group(1) if title_match else md_file.stem
+                # Extract body (content after frontmatter)
+                body_content = content.split('---', 2)[-1]
+                digest_content_parts.append(f"## {subject}\n\n{body_content.strip()}")
 
-        if not weekly_emails:
-            print("  - No posts found from the past week to compile.")
-            digest_content = "No posts from the past week."
+    digest_content = "\n\n---\n\n".join(digest_content_parts)
 
-    except requests.exceptions.RequestException as e:
-        print(f"  - ERROR fetching weekly emails: {e}")
-        return
+    if not digest_content_parts:
+        print("  - No local files found from the past week to compile.")
+        digest_content = "No posts from the past week."
 
     print("\n > Fetching last Sunday's email for the #OpenToWork Weekly section...")
-    previous_sunday = today - timedelta(days=7)
-    url = f"https://api.buttondown.email/v1/emails?email_type=public&publish_date__start={previous_sunday.strftime('%Y-%m-%d')}"
+    previous_sunday_date = start_of_week - timedelta(days=1)
+    # Since we need the slug, we still need to fetch this from the API
+    headers = {"Authorization": f"Token {BUTTONDOWN_API_KEY}"}
+    url = f"https://api.buttondown.email/v1/emails?email_type=public&publish_date__start={previous_sunday_date.strftime('%Y-%m-%d')}"
     
     open_to_work_content = ""
     try:
@@ -561,8 +540,10 @@ def create_sunday_digest():
 
     except requests.exceptions.RequestException as e:
         print(f"  - ERROR fetching last Sunday's email: {e}")
-
-    new_subject = f"🌶️ Hot Fudge Sunday for {today.strftime('%Y-%m-%d')}"
+    
+    # Adjust the date if running on Saturday
+    sunday_date = today if today.weekday() == 6 else today + timedelta(days=1)
+    new_subject = f"🌶️ Hot Fudge Sunday for {sunday_date.strftime('%Y-%m-%d')}"
     
     new_body_parts = [
         "## Last Week",
