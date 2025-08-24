@@ -269,15 +269,23 @@ def sync_latest_from_api():
     start_of_week = today - timedelta(days=today.weekday())
     
     headers = {"Authorization": f"Token {BUTTONDOWN_API_KEY}"}
-    url = f"https://api.buttondown.email/v1/emails?email_type=premium&publish_date__start={start_of_week.strftime('%Y-%m-%d')}"
     
     try:
         print(f" > Checking for missing emails for the week of {start_of_week.strftime('%Y-%m-%d')}...", flush=True)
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
         
-        api_emails = response.json().get("results", [])
-        
+        # Fetch premium emails for Mon-Sat
+        url_premium = f"https://api.buttondown.email/v1/emails?email_type=premium&publish_date__start={start_of_week.strftime('%Y-%m-%d')}"
+        response_premium = requests.get(url_premium, headers=headers)
+        response_premium.raise_for_status()
+        api_emails = response_premium.json().get("results", [])
+
+        # If it's Sunday, also fetch the public email for today
+        if today.weekday() == 6:
+            url_public = f"https://api.buttondown.email/v1/emails?email_type=public&publish_date__start={today.strftime('%Y-%m-%d')}"
+            response_public = requests.get(url_public, headers=headers)
+            response_public.raise_for_status()
+            api_emails.extend(response_public.json().get("results", []))
+
         missing_emails_map = {}
         
         print("\nWhich day would you like to sync?")
@@ -287,7 +295,8 @@ def sync_latest_from_api():
             day_name = day_to_check.strftime('%A')
             date_str = day_to_check.strftime('%Y-%m-%d')
             
-            email_for_day = next((e for e in api_emails if day_name in e.get('subject', '') and date_str in e.get('subject', '')), None)
+            # Find an email from the API response whose subject contains the day name and date
+            email_for_day = next((e for e in api_emails if (day_name in e.get('subject', '') or ("Sunday" in e.get('subject', '') and day_name == "Sunday")) and date_str in e.get('subject', '')), None)
 
             if email_for_day:
                 slug = email_for_day.get('slug')
@@ -502,10 +511,8 @@ def create_sunday_digest():
         if day_directory.is_dir():
             for md_file in day_directory.glob("*.md"):
                 content = md_file.read_text(encoding='utf-8')
-                # Extract subject from frontmatter
                 title_match = re.search(r'^title:\s*"(.*?)"', content, re.MULTILINE)
                 subject = title_match.group(1) if title_match else md_file.stem
-                # Extract body (content after frontmatter)
                 body_content = content.split('---', 2)[-1]
                 digest_content_parts.append(f"## {subject}\n\n{body_content.strip()}")
 
@@ -517,7 +524,6 @@ def create_sunday_digest():
 
     print("\n > Fetching last Sunday's email for the #OpenToWork Weekly section...")
     previous_sunday_date = start_of_week - timedelta(days=1)
-    # Since we need the slug, we still need to fetch this from the API
     headers = {"Authorization": f"Token {BUTTONDOWN_API_KEY}"}
     url = f"https://api.buttondown.email/v1/emails?email_type=public&publish_date__start={previous_sunday_date.strftime('%Y-%m-%d')}"
     
@@ -541,7 +547,6 @@ def create_sunday_digest():
     except requests.exceptions.RequestException as e:
         print(f"  - ERROR fetching last Sunday's email: {e}")
     
-    # Adjust the date if running on Saturday
     sunday_date = today if today.weekday() == 6 else today + timedelta(days=1)
     new_subject = f"🌶️ Hot Fudge Sunday for {sunday_date.strftime('%Y-%m-%d')}"
     
