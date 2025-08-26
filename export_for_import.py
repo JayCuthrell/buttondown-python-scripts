@@ -273,13 +273,11 @@ def sync_latest_from_api():
     try:
         print(f" > Checking for missing emails for the week of {start_of_week.strftime('%Y-%m-%d')}...", flush=True)
         
-        # Fetch premium emails for Mon-Sat
         url_premium = f"https://api.buttondown.email/v1/emails?email_type=premium&publish_date__start={start_of_week.strftime('%Y-%m-%d')}"
         response_premium = requests.get(url_premium, headers=headers)
         response_premium.raise_for_status()
         api_emails = response_premium.json().get("results", [])
 
-        # If it's Sunday, also fetch the public email for today
         if today.weekday() == 6:
             url_public = f"https://api.buttondown.email/v1/emails?email_type=public&publish_date__start={today.strftime('%Y-%m-%d')}"
             response_public = requests.get(url_public, headers=headers)
@@ -295,7 +293,6 @@ def sync_latest_from_api():
             day_name = day_to_check.strftime('%A')
             date_str = day_to_check.strftime('%Y-%m-%d')
             
-            # Find an email from the API response whose subject contains the day name and date
             email_for_day = next((e for e in api_emails if (day_name in e.get('subject', '') or ("Sunday" in e.get('subject', '') and day_name == "Sunday")) and date_str in e.get('subject', '')), None)
 
             if email_for_day:
@@ -379,8 +376,8 @@ def create_daily_emails():
     print("\n--- Mode: Create Skeleton Emails ---")
     
     today = datetime.now()
-    current_weekday = today.weekday()
-
+    start_of_week = today - timedelta(days=today.weekday())
+    
     load_dotenv()
     BUTTONDOWN_API_KEY = os.getenv("BUTTONDOWN_API_KEY")
     if not BUTTONDOWN_API_KEY:
@@ -393,6 +390,15 @@ def create_daily_emails():
     }
     url = "https://api.buttondown.email/v1/emails"
 
+    try:
+        print(" > Checking for existing drafts this week...")
+        response = requests.get(f"{url}?status=draft&publish_date__start={start_of_week.strftime('%Y-%m-%d')}", headers=headers)
+        response.raise_for_status()
+        existing_drafts = {e['subject'] for e in response.json().get("results", [])}
+    except requests.exceptions.RequestException as e:
+        print(f"  - ERROR checking for existing drafts: {e}")
+        return
+
     daily_formats = {
         0: "📈 Markets Monday for",
         1: "🔥 Hot Takes Tuesday for",
@@ -401,42 +407,17 @@ def create_daily_emails():
         4: "✅ Final Thoughts Friday for",
         5: "🔮 Sneak Peak Saturday for"
     }
-
-    if current_weekday == 6: # It's Sunday
-        print("\nIt's Sunday! Creating skeleton emails for the week ahead...")
-        for i in range(1, 7): 
-            day_to_create = today + timedelta(days=i)
-            day_name_index = day_to_create.weekday()
-            
-            if day_name_index in daily_formats:
-                date_str = day_to_create.strftime('%Y-%m-%d')
-                subject = f"{daily_formats[day_name_index]} {date_str}"
-                
-                payload = { 
-                    "subject": subject, 
-                    "body": f"Content for {subject} goes here.", 
-                    "status": "draft",
-                    "email_type": "premium"
-                }
-
-                try:
-                    print(f" > Creating email: '{subject}'")
-                    response = requests.post(url, headers=headers, json=payload)
-                    
-                    if response.status_code == 201:
-                        print(f"   - SUCCESS: Email created successfully.")
-                    else:
-                        print(f"   - FAILED: API request failed with status code {response.status_code}")
-                        print(f"     Response: {response.text}")
-                except requests.exceptions.RequestException as e:
-                    print(f"   - FAILED: An error occurred during the API request: {e}")
-        print("\nWeekly email creation process complete.")
     
-    elif current_weekday in daily_formats: # It's a weekday (Mon-Sat)
-        print(f"\nCreating skeleton email for today, {today.strftime('%A')}...")
-        date_str = today.strftime('%Y-%m-%d')
-        subject = f"{daily_formats[current_weekday]} {date_str}"
-        
+    # Logic for creating emails for the rest of the week
+    for i in range(today.weekday(), 6):
+        day_to_create = start_of_week + timedelta(days=i)
+        date_str = day_to_create.strftime('%Y-%m-%d')
+        subject = f"{daily_formats[i]} {date_str}"
+
+        if subject in existing_drafts:
+            print(f" > Draft for '{subject}' already exists. Skipping.")
+            continue
+
         payload = { 
             "subject": subject, 
             "body": f"Content for {subject} goes here.", 
@@ -455,8 +436,9 @@ def create_daily_emails():
                 print(f"     Response: {response.text}")
         except requests.exceptions.RequestException as e:
             print(f"   - FAILED: An error occurred during the API request: {e}")
-    else:
-        print("No email format defined for today.")
+
+    print("\nWeekly email creation process complete.")
+
 
 def create_sunday_digest():
     """MODE 6: Compiles the past week's posts into a new Sunday digest."""
@@ -590,7 +572,7 @@ def main():
         print("  2. Retry failed descriptions")
         print("  3. Fix empty alt tags & comments")
         print("  4. Sync missing emails from this week")
-        print("  5. Create skeleton email(s)")
+        print("  5. Create skeleton email(s) for the rest of the week")
         print("  6. Create Hot Fudge Sunday digest (Sat/Sun)")
         print("  7. Exit")
         choice = input("Enter your choice: ")
