@@ -80,7 +80,7 @@ def process_html_body(body: str) -> str:
     soup = BeautifulSoup(body, 'html.parser')
     body_was_modified = False
 
-    comments = soup.find_all(string=lambda text: isinstance(text, Comment))
+    comments = soup.find_all(string=lambda text: isinstance(text, Comment) and 'buttondown-editor-mode' not in text)
     if comments:
         body_was_modified = True
         for comment in comments:
@@ -193,7 +193,7 @@ def retry_failed_fetches():
     print(f"\nScanning for files with errors in: {import_dir}")
     error_string_to_find = 'description: "Error fetching description."'
     files_to_retry = [
-        md_file for md_file in import_dir.glob("*.md")
+        md_file for md_file in import_dir.rglob("*.md")
         if error_string_to_find in md_file.read_text(encoding='utf-8')
     ]
     
@@ -232,7 +232,7 @@ def fix_alt_tags_in_folder():
     print(f"\nScanning files in: {import_dir}")
     updated_files_count = 0
     
-    for md_file in import_dir.glob("*.md"):
+    for md_file in import_dir.rglob("*.md"):
         original_content = md_file.read_text(encoding='utf-8')
         modified_content = process_html_body(original_content)
         
@@ -249,7 +249,7 @@ def fix_alt_tags_in_folder():
 
 
 def sync_latest_from_api():
-    """MODE 4: Fetches emails from the API for the current week and allows syncing of missing ones."""
+    """MODE 4: Fetches published and scheduled emails from the API for the current week."""
     print("\n--- Mode: Sync Email from API ---")
     
     load_dotenv()
@@ -271,42 +271,53 @@ def sync_latest_from_api():
     headers = {"Authorization": f"Token {BUTTONDOWN_API_KEY}"}
     
     try:
-        print(f" > Checking for missing emails for the week of {start_of_week.strftime('%Y-%m-%d')}...", flush=True)
+        print(f" > Checking for emails for the week of {start_of_week.strftime('%Y-%m-%d')}...", flush=True)
         
-        url_premium = f"https://api.buttondown.email/v1/emails?email_type=premium&publish_date__start={start_of_week.strftime('%Y-%m-%d')}"
-        response_premium = requests.get(url_premium, headers=headers)
-        response_premium.raise_for_status()
-        api_emails = response_premium.json().get("results", [])
-
-        if today.weekday() == 6:
-            url_public = f"https://api.buttondown.email/v1/emails?email_type=public&publish_date__start={today.strftime('%Y-%m-%d')}"
-            response_public = requests.get(url_public, headers=headers)
-            response_public.raise_for_status()
-            api_emails.extend(response_public.json().get("results", []))
+        # ADDED: Separate API calls for published and scheduled emails for clarity.
+        api_emails = []
+        
+        # 1. Fetch published emails for the week
+        url_published = f"https://api.buttondown.email/v1/emails?status=sent&publish_date__start={start_of_week.strftime('%Y-%m-%d')}"
+        response_published = requests.get(url_published, headers=headers)
+        response_published.raise_for_status()
+        api_emails.extend(response_published.json().get("results", []))
+        
+        # 2. Fetch scheduled emails for the week
+        url_scheduled = f"https://api.buttondown.email/v1/emails?status=scheduled&publish_date__start={start_of_week.strftime('%Y-%m-%d')}"
+        response_scheduled = requests.get(url_scheduled, headers=headers)
+        response_scheduled.raise_for_status()
+        api_emails.extend(response_scheduled.json().get("results", []))
 
         missing_emails_map = {}
         
         print("\nWhich day would you like to sync?")
         
-        for i in range(today.weekday() + 1):
+        # CHANGED: Loop now runs for all 7 days of the week (0-6)
+        for i in range(7):
             day_to_check = start_of_week + timedelta(days=i)
             day_name = day_to_check.strftime('%A')
             date_str = day_to_check.strftime('%Y-%m-%d')
             
+            # This logic finds an email where the subject contains the day name and date
             email_for_day = next((e for e in api_emails if (day_name in e.get('subject', '') or ("Sunday" in e.get('subject', '') and day_name == "Sunday")) and date_str in e.get('subject', '')), None)
 
             if email_for_day:
                 slug = email_for_day.get('slug')
                 day_directory = SYNC_PATH / day_name
                 expected_file = day_directory / f"{slug}.md"
-                status = "[Synced]" if expected_file.exists() else "[Missing]"
                 
-                if status == "[Missing]":
+                local_status = "[Synced]" if expected_file.exists() else "[Missing]"
+                api_status = f"[{email_for_day.get('status', 'unknown').capitalize()}]" # ADDED: Show API status
+                
+                if local_status == "[Missing]":
                     missing_emails_map[i + 1] = email_for_day
 
-                print(f"  {i + 1}. {day_name} ({date_str}) - {status} - \"{email_for_day['subject']}\"")
+                # CHANGED: Enhanced print statement for more clarity
+                print(f"  {i + 1}. {day_name} ({date_str}) - {local_status} {api_status} - \"{email_for_day['subject']}\"")
             else:
-                print(f"  {i + 1}. {day_name} ({date_str}) - [No Email Published]")
+                # ADDED: A check to show if the day is in the future
+                future_status = "(Future)" if day_to_check.date() > today.date() else ""
+                print(f"  {i + 1}. {day_name} ({date_str}) - [No Email Published] {future_status}")
 
         if not missing_emails_map:
             print("\nNo missing emails found to sync.")
@@ -341,6 +352,7 @@ def sync_latest_from_api():
         if date_match:
             formatted_date = date_match.group(1)
         else:
+            # Use the publish date from the API, which will be correct for scheduled posts
             formatted_date = parse_date(email_to_sync.get('publish_date')).strftime('%Y-%m-%d')
         
         processed_body = process_html_body(original_body)
@@ -417,9 +429,10 @@ def create_daily_emails():
             print(f" > Draft for '{subject}' already exists. Skipping.")
             continue
 
+        body_content = f"\nContent for {subject} goes here."
         payload = { 
             "subject": subject, 
-            "body": f"Content for {subject} goes here.", 
+            "body": body_content, 
             "status": "draft",
             "email_type": "premium"
         }
@@ -498,10 +511,12 @@ def create_sunday_digest():
                 content = md_file.read_text(encoding='utf-8')
                 title_match = re.search(r'^title:\s*"(.*?)"', content, re.MULTILINE)
                 subject = title_match.group(1) if title_match else md_file.stem
-                body_content = content.split('---', 2)[-1]
-                digest_content_parts.append(f"## {subject}\n{body_content.lstrip()}")
+                html_body_content = content.split('---', 2)[-1]
+                
+                markdown_body = md(html_body_content.lstrip())
+                digest_content_parts.append(f"## {subject}\n\n{markdown_body}")
 
-    digest_content = "\r\n\r\n---\r\n\r\n".join(digest_content_parts)
+    digest_content = "\n\n---\n\n".join(digest_content_parts)
 
     if not digest_content_parts:
         print("  - No local files found from the past week to compile.")
@@ -519,8 +534,9 @@ def create_sunday_digest():
         previous_sunday_emails = response.json()['results']
         
         if previous_sunday_emails:
-            last_sunday_body = previous_sunday_emails[0]['body']
-            parts = re.split(r'# #OpenToWork Weekly', last_sunday_body)
+            last_sunday_body_html = previous_sunday_emails[0]['body']
+            last_sunday_body_md = md(last_sunday_body_html)
+            parts = re.split(r'# #OpenToWork Weekly', last_sunday_body_md)
             if len(parts) > 1:
                 open_to_work_content = "# #OpenToWork Weekly" + parts[1]
                 print("  - Successfully extracted #OpenToWork Weekly section.")
@@ -536,7 +552,7 @@ def create_sunday_digest():
     new_subject = f"🌶️ Hot Fudge Sunday for {sunday_date.strftime('%Y-%m-%d')}"
     
     body_lines = [
-        "<!-- buttondown-editor-mode: plaintext -->## Last Week",
+        "!-- buttondown-editor-mode: plaintext -->## Last Week",
         "",
         "A look at the week behind...",
         "",
