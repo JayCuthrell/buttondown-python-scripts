@@ -408,7 +408,6 @@ def create_daily_emails():
         5: "🔮 Sneak Peak Saturday for"
     }
     
-    # Logic for creating emails for the rest of the week
     for i in range(today.weekday(), 6):
         day_to_create = start_of_week + timedelta(days=i)
         date_str = day_to_create.strftime('%Y-%m-%d')
@@ -470,10 +469,11 @@ def create_sunday_digest():
         for i in range(6):
             day_to_check = start_of_week + timedelta(days=i)
             day_name = day_to_check.strftime('%A')
+            date_str = day_to_check.strftime('%Y-%m-%d')
             day_directory = SYNC_PATH / day_name
             
-            if not any(day_directory.iterdir()):
-                print(f"  - MISSING: No file found in the '{day_name}' directory.")
+            if not any(day_directory.glob(f"*{date_str}*.md")):
+                print(f"  - MISSING: No file found in '{day_name}' for {date_str}.")
                 all_synced = False
                 break
         
@@ -488,17 +488,20 @@ def create_sunday_digest():
     for i in range(6):
         day_to_check = start_of_week + timedelta(days=i)
         day_name = day_to_check.strftime('%A')
+        date_str = day_to_check.strftime('%Y-%m-%d')
         day_directory = SYNC_PATH / day_name
         
         if day_directory.is_dir():
-            for md_file in day_directory.glob("*.md"):
+            files_for_day = list(day_directory.glob(f"*{date_str}*.md"))
+            if files_for_day:
+                md_file = files_for_day[0]
                 content = md_file.read_text(encoding='utf-8')
                 title_match = re.search(r'^title:\s*"(.*?)"', content, re.MULTILINE)
                 subject = title_match.group(1) if title_match else md_file.stem
                 body_content = content.split('---', 2)[-1]
-                digest_content_parts.append(f"## {subject}\n\n{body_content.strip()}")
+                digest_content_parts.append(f"## {subject}\n{body_content.lstrip()}")
 
-    digest_content = "\n\n---\n\n".join(digest_content_parts)
+    digest_content = "\r\n\r\n---\r\n\r\n".join(digest_content_parts)
 
     if not digest_content_parts:
         print("  - No local files found from the past week to compile.")
@@ -532,15 +535,20 @@ def create_sunday_digest():
     sunday_date = today if today.weekday() == 6 else today + timedelta(days=1)
     new_subject = f"🌶️ Hot Fudge Sunday for {sunday_date.strftime('%Y-%m-%d')}"
     
-    new_body_parts = [
-        "## Last Week",
+    body_lines = [
+        "<!-- buttondown-editor-mode: plaintext -->## Last Week",
+        "",
         "A look at the week behind...",
+        "",
         "## This Week",
+        "",
         "A look at the week ahead...",
+        "",
         digest_content,
+        "",
         open_to_work_content if open_to_work_content else "# #OpenToWork Weekly\n\nPlaceholder for open to work section."
     ]
-    new_body = "\n\n".join(new_body_parts)
+    new_body = "\n".join(body_lines)
     
     print(f"\n > Creating new digest email: '{new_subject}'")
     
@@ -549,7 +557,7 @@ def create_sunday_digest():
         "body": new_body,
         "status": "draft"
     }
-    
+
     try:
         response = requests.post("https://api.buttondown.email/v1/emails", headers={"Authorization": f"Token {BUTTONDOWN_API_KEY}", "Content-Type": "application/json"}, json=payload)
         
