@@ -7,6 +7,8 @@ from bs4 import BeautifulSoup, Comment
 from dotenv import load_dotenv
 from dateutil.parser import parse as parse_date
 from datetime import datetime, timedelta
+import markdownify
+from markdownify import markdownify as md
 
 # --- Helper Functions ---
 
@@ -535,8 +537,9 @@ def create_sunday_digest():
         
         if previous_sunday_emails:
             last_sunday_body_html = previous_sunday_emails[0]['body']
-            last_sunday_body_md = md(last_sunday_body_html)
-            parts = re.split(r'# #OpenToWork Weekly', last_sunday_body_md)
+            #last_sunday_body_md = md(last_sunday_body_html)
+            #parts = re.split(r'# #OpenToWork Weekly', last_sunday_body_md)
+            parts = re.split(r'# #OpenToWork Weekly', last_sunday_body_html)
             if len(parts) > 1:
                 open_to_work_content = "# #OpenToWork Weekly" + parts[1]
                 print("  - Successfully extracted #OpenToWork Weekly section.")
@@ -551,17 +554,19 @@ def create_sunday_digest():
     sunday_date = today if today.weekday() == 6 else today + timedelta(days=1)
     new_subject = f"🌶️ Hot Fudge Sunday for {sunday_date.strftime('%Y-%m-%d')}"
     
+    # ensure that the first part of the body is the buttondown editor mode comment
     body_lines = [
-        "!-- buttondown-editor-mode: plaintext -->## Last Week",
-        "",
+        "<!-- buttondown-editor-mode: plaintext -->",
+        "## Last Week",
+        "\n",
         "A look at the week behind...",
-        "",
+        "\n",
         "## This Week",
-        "",
+        "\n",
         "A look at the week ahead...",
-        "",
+        "\n",
         digest_content,
-        "",
+        "\n",
         open_to_work_content if open_to_work_content else "# #OpenToWork Weekly\n\nPlaceholder for open to work section."
     ]
     new_body = "\n".join(body_lines)
