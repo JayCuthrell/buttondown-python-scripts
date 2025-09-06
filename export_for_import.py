@@ -515,8 +515,15 @@ def create_sunday_digest():
                 subject = title_match.group(1) if title_match else md_file.stem
                 html_body_content = content.split('---', 2)[-1]
                 
-                markdown_body = md(html_body_content.lstrip())
-                digest_content_parts.append(f"## {subject}\n\n{markdown_body}")
+                #markdown_body = md(html_body_content.lstrip())
+                #digest_content_parts.append(f"## {subject}\n\n{markdown_body}")
+                digest_content_parts.append(f"## {subject}\n\n{html_body_content.lstrip()}")
+                print(f"  - Added post from {day_name}: '{subject}'")
+            else:
+                print(f"  - WARNING: No file found in '{day_name}' for {date_str}.")
+        else:
+            print(f"  - WARNING: Directory '{day_name}' does not exist in SYNC_PATH.")
+            continue
 
     digest_content = "\n\n---\n\n".join(digest_content_parts)
 
@@ -555,8 +562,10 @@ def create_sunday_digest():
     new_subject = f"🌶️ Hot Fudge Sunday for {sunday_date.strftime('%Y-%m-%d')}"
     
     # ensure that the first part of the body is the buttondown editor mode comment
+    editor_mode_comment = "<!-- buttondown-editor-mode: plaintext -->"
+
     body_lines = [
-        "<!-- buttondown-editor-mode: plaintext -->",
+        editor_mode_comment,
         "## Last Week",
         "\n",
         "A look at the week behind...",
