@@ -56,7 +56,7 @@ def get_latest_buttondown_email():
     # recent ones and we'll pick the absolute latest from the results.
     # A more robust approach might involve `?ordering=-publish_date&limit=1` if the API supports it.
 
-    FILTERS = f"&type=public&publish_date__start={today_str}" # Attempt to get just one, the most recent
+    FILTERS = f"&type=public&status=scheduled" # Attempt to get just one, the most recent
 
     try:
         response = requests.request("GET", f"{BUTTONDOWN_BASE_URL}/v1{BUTTONDOWN_ENDPOINT}?{FILTERS}", headers=headers)

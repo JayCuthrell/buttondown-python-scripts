@@ -7,6 +7,8 @@ from bs4 import BeautifulSoup, Comment
 from dotenv import load_dotenv
 from dateutil.parser import parse as parse_date
 from datetime import datetime, timedelta
+import markdownify
+from markdownify import markdownify as md
 
 # --- Helper Functions ---
 
@@ -513,8 +515,15 @@ def create_sunday_digest():
                 subject = title_match.group(1) if title_match else md_file.stem
                 html_body_content = content.split('---', 2)[-1]
                 
-                markdown_body = md(html_body_content.lstrip())
-                digest_content_parts.append(f"## {subject}\n\n{markdown_body}")
+                #markdown_body = md(html_body_content.lstrip())
+                #digest_content_parts.append(f"## {subject}\n\n{markdown_body}")
+                digest_content_parts.append(f"## {subject}\n\n{html_body_content.lstrip()}")
+                print(f"  - Added post from {day_name}: '{subject}'")
+            else:
+                print(f"  - WARNING: No file found in '{day_name}' for {date_str}.")
+        else:
+            print(f"  - WARNING: Directory '{day_name}' does not exist in SYNC_PATH.")
+            continue
 
     digest_content = "\n\n---\n\n".join(digest_content_parts)
 
@@ -535,8 +544,9 @@ def create_sunday_digest():
         
         if previous_sunday_emails:
             last_sunday_body_html = previous_sunday_emails[0]['body']
-            last_sunday_body_md = md(last_sunday_body_html)
-            parts = re.split(r'# #OpenToWork Weekly', last_sunday_body_md)
+            #last_sunday_body_md = md(last_sunday_body_html)
+            #parts = re.split(r'# #OpenToWork Weekly', last_sunday_body_md)
+            parts = re.split(r'# #OpenToWork Weekly', last_sunday_body_html)
             if len(parts) > 1:
                 open_to_work_content = "# #OpenToWork Weekly" + parts[1]
                 print("  - Successfully extracted #OpenToWork Weekly section.")
@@ -551,17 +561,21 @@ def create_sunday_digest():
     sunday_date = today if today.weekday() == 6 else today + timedelta(days=1)
     new_subject = f"🌶️ Hot Fudge Sunday for {sunday_date.strftime('%Y-%m-%d')}"
     
+    # ensure that the first part of the body is the buttondown editor mode comment
+    editor_mode_comment = "<!-- buttondown-editor-mode: plaintext -->"
+
     body_lines = [
-        "!-- buttondown-editor-mode: plaintext -->## Last Week",
-        "",
+        editor_mode_comment,
+        "## Last Week",
+        "\n",
         "A look at the week behind...",
-        "",
+        "\n",
         "## This Week",
-        "",
+        "\n",
         "A look at the week ahead...",
-        "",
+        "\n",
         digest_content,
-        "",
+        "\n",
         open_to_work_content if open_to_work_content else "# #OpenToWork Weekly\n\nPlaceholder for open to work section."
     ]
     new_body = "\n".join(body_lines)
