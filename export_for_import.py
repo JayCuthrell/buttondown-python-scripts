@@ -388,10 +388,18 @@ date: {formatted_date}
 def create_daily_emails():
     """MODE 5: Creates skeleton emails for today or the upcoming week."""
     print("\n--- Mode: Create Skeleton Emails ---")
-    
+
     today = datetime.now()
     start_of_week = today - timedelta(days=today.weekday())
-    
+
+    # Get user input for the week
+    week_input = input(f"Enter the start date of the week (YYYY-MM-DD), or press Enter for the current week ({start_of_week.strftime('%Y-%m-%d')}): ").strip()
+    if week_input:
+        try:
+            start_of_week = datetime.strptime(week_input, '%Y-%m-%d')
+        except ValueError:
+            print("Invalid date format. Using the current week.")
+
     load_dotenv()
     BUTTONDOWN_API_KEY = os.getenv("BUTTONDOWN_API_KEY")
     if not BUTTONDOWN_API_KEY:
@@ -421,28 +429,45 @@ def create_daily_emails():
         4: "✅ Final Thoughts Friday for",
         5: "🔮 Sneak Peak Saturday for"
     }
-    
-    for i in range(today.weekday(), 6):
+
+    emails_to_create = []
+    for i in range(6): # Monday to Saturday
         day_to_create = start_of_week + timedelta(days=i)
         date_str = day_to_create.strftime('%Y-%m-%d')
         subject = f"{daily_formats[i]} {date_str}"
 
         if subject in existing_drafts:
-            print(f" > Draft for '{subject}' already exists. Skipping.")
-            continue
+            overwrite = input(f" > Draft for '{subject}' already exists. Overwrite? (y/n): ").lower()
+            if overwrite != 'y':
+                continue
 
         body_content = f"\nContent for {subject} goes here."
-        payload = { 
-            "subject": subject, 
-            "body": body_content, 
+        payload = {
+            "subject": subject,
+            "body": body_content,
             "status": "draft",
             "email_type": "premium"
         }
+        emails_to_create.append(payload)
 
+    if not emails_to_create:
+        print("\nNo emails to create.")
+        return
+
+    print("\n--- Summary ---")
+    for email in emails_to_create:
+        print(f"  - Subject: {email['subject']}")
+    
+    confirm = input("\n> Create these emails? (y/n): ").lower()
+    if confirm != 'y':
+        print("Operation cancelled.")
+        return
+
+    for payload in emails_to_create:
         try:
-            print(f" > Creating email: '{subject}'")
+            print(f" > Creating email: '{payload['subject']}'")
             response = requests.post(url, headers=headers, json=payload)
-            
+
             if response.status_code == 201:
                 print(f"   - SUCCESS: Email created successfully.")
             else:
@@ -452,7 +477,6 @@ def create_daily_emails():
             print(f"   - FAILED: An error occurred during the API request: {e}")
 
     print("\nWeekly email creation process complete.")
-
 
 def create_sunday_digest():
     """MODE 6: Compiles the past week's posts into a new Sunday digest."""
