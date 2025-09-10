@@ -338,6 +338,10 @@ def sync_latest_from_api():
         raw_subject = email_to_sync.get('subject', 'No Subject')
         slug = email_to_sync.get('slug', '')
         original_body = email_to_sync.get('body', '')
+
+        # Now remove the "<!-- buttondown-editor-mode: plaintext -->" used by Buttondown
+
+        original_body = re.sub(r'<!-- buttondown-editor-mode: plaintext -->', '', original_body).strip()
         
         description = email_to_sync.get('description')
         if not description:
