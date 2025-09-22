@@ -3,25 +3,7 @@ import json
 from dotenv import load_dotenv
 import os
 import google.generativeai as genai
-from datetime import datetime, timezone, timedelta
-
-from dateutil.parser import parse
 from datetime import datetime, timedelta, timezone
-
-# Get today's date
-today = datetime.today()
-
-today_str = datetime.now().strftime('%Y-%m-%d')
-    
-
-# Calculate the date 7 days ago
-seven_days_ago = today - timedelta(days=-1)
-
-# Format the date in YYYY-MM-DD format
-formatted_date = seven_days_ago.strftime('%Y-%m-%d')
-
-# The variable to store the date
-date_seven_days_ago = formatted_date
 
 # Load environment variables from .env file
 load_dotenv()
@@ -42,36 +24,50 @@ if not GOOGLE_API_KEY:
 genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel('gemini-1.5-pro')
 
-def get_latest_buttondown_email():
+def get_latest_sunday_buttondown_email():
     """
-    Fetches the latest published premium email from Buttondown.
+    Fetches the most recent public email from Buttondown that was published on a Sunday.
+    This version filters by a date range to ensure we capture the most recent Sunday.
     """
     headers = {
         "Authorization": f"Token {BUTTONDOWN_API_KEY}",
     }
-    # Fetching the latest email by ordering by publish_date descending and taking the first one
-    # Note: Buttondown API might not directly support 'latest' or 'limit=1' easily without
-    # sorting. We'll fetch a small number and sort locally if needed, or rely on default sorting.
-    # For now, we'll assume the default API call without specific filters might return
-    # recent ones and we'll pick the absolute latest from the results.
-    # A more robust approach might involve `?ordering=-publish_date&limit=1` if the API supports it.
-
-    FILTERS = f"&type=public&status=scheduled" # Attempt to get just one, the most recent
+    
+    # Calculate the date 14 days ago to ensure we capture at least two weeks of emails.
+    two_weeks_ago = datetime.now(timezone.utc) - timedelta(days=14)
+    
+    # Format the date into a simple YYYY-MM-DD format.
+    formatted_date = two_weeks_ago.strftime('%Y-%m-%d')
+    
+    # Use the publish_date__start filter to get all emails published in the last 14 days.
+    FILTERS = f"?ordering=-publish_date&type=public&publish_date__start={formatted_date}"
 
     try:
-        response = requests.request("GET", f"{BUTTONDOWN_BASE_URL}/v1{BUTTONDOWN_ENDPOINT}?{FILTERS}", headers=headers)
+        print("Fetching recent public emails from Buttondown (last 14 days)...")
+        response = requests.get(f"{BUTTONDOWN_BASE_URL}/v1{BUTTONDOWN_ENDPOINT}{FILTERS}", headers=headers)
         response.raise_for_status()  # Raise an exception for HTTP errors
         data = json.loads(response.content)
         emails = data.get("results", [])
 
         if not emails:
-            print("No emails found from Buttondown API.")
+            print("No emails found from Buttondown API in the specified date range.")
             return None
 
-        # Sort by publish_date to ensure we get the absolute latest if page_size doesn't guarantee it
-        emails.sort(key=lambda x: datetime.fromisoformat(x['publish_date'].replace('Z', '+00:00')), reverse=True)
-        latest_email = emails[0]
-        return latest_email
+        # Iterate through the fetched emails to find the most recent one published on a Sunday.
+        for email in emails:
+            publish_date_str = email.get('publish_date')
+            if publish_date_str:
+                # The 'Z' at the end of the timestamp indicates UTC. `fromisoformat` can handle this.
+                publish_date = datetime.fromisoformat(publish_date_str.replace('Z', '+00:00'))
+                
+                # Check if the day of the week is Sunday.
+                # Monday is 0 and Sunday is 6.
+                if publish_date.weekday() == 6:
+                    print(f"Found latest Sunday email published on {publish_date.date()}.")
+                    return email
+
+        print("No Sunday email found in the recent batch of emails.")
+        return None
 
     except requests.exceptions.RequestException as e:
         print(f"Error fetching email from Buttondown: {e}")
@@ -122,15 +118,15 @@ def summarize_with_gemini(email_subject, email_body, email_url):
         return "Could not generate summary."
 
 def main():
-    latest_email = get_latest_buttondown_email()
+    latest_email = get_latest_sunday_buttondown_email()
 
     if latest_email:
         subject = latest_email.get('subject', 'No Subject')
         body = latest_email.get('body', 'No Body Content')
-        email_url = latest_email.get('absolute_url', '#') # Get the direct URL of the email post
+        email_url = latest_email.get('absolute_url', '#') 
 
         print("-" * 50)
-        print("Generating LinkedIn Post for the Latest Email...")
+        print("Generating LinkedIn Post for the Latest Sunday Email...")
         print("-" * 50)
 
         linkedin_summary = summarize_with_gemini(subject, body, email_url)
@@ -143,7 +139,7 @@ def main():
         print(f"Read the full email here: {email_url}")
         print("=" * 30)
     else:
-        print("Could not retrieve the latest email to generate a LinkedIn post.")
+        print("Could not retrieve the latest Sunday email to generate a LinkedIn post.")
 
 if __name__ == "__main__":
     main()
