@@ -305,7 +305,7 @@ def sync_latest_from_api():
 
             if email_for_day:
                 slug = email_for_day.get('slug')
-                day_directory = SYNC_PATH / day_name
+                day_directory = SYNC_PATH / day_name.lower()
                 expected_file = day_directory / f"{slug}.md"
                 
                 local_status = "[Synced]" if expected_file.exists() else "[Missing]"
