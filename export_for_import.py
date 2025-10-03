@@ -374,7 +374,7 @@ date: {formatted_date}
         final_content = frontmatter + processed_body
         
         day_name_for_saving = parse_date(formatted_date).strftime('%A')
-        output_dir = SYNC_PATH / day_name_for_saving
+        output_dir = SYNC_PATH / day_name_for_saving.lower()
         output_dir.mkdir(exist_ok=True)
         
         output_file = output_dir / f"{slug}.md"
