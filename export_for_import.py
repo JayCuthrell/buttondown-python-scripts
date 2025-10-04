@@ -513,10 +513,10 @@ def create_sunday_digest():
             day_to_check = start_of_week + timedelta(days=i)
             day_name = day_to_check.strftime('%A')
             date_str = day_to_check.strftime('%Y-%m-%d')
-            day_directory = SYNC_PATH / day_name
+            day_directory = SYNC_PATH / day_name.lower()
             
             if not any(day_directory.glob(f"*{date_str}*.md")):
-                print(f"  - MISSING: No file found in '{day_name}' for {date_str}.")
+                print(f"  - MISSING: No file found in '{day_name.lower()}' for {date_str}.")
                 all_synced = False
                 break
         
@@ -532,7 +532,7 @@ def create_sunday_digest():
         day_to_check = start_of_week + timedelta(days=i)
         day_name = day_to_check.strftime('%A')
         date_str = day_to_check.strftime('%Y-%m-%d')
-        day_directory = SYNC_PATH / day_name
+        day_directory = SYNC_PATH / day_name.lower()
         
         if day_directory.is_dir():
             files_for_day = list(day_directory.glob(f"*{date_str}*.md"))
@@ -546,11 +546,11 @@ def create_sunday_digest():
                 #markdown_body = md(html_body_content.lstrip())
                 #digest_content_parts.append(f"## {subject}\n\n{markdown_body}")
                 digest_content_parts.append(f"## {subject}\n\n{html_body_content.lstrip()}")
-                print(f"  - Added post from {day_name}: '{subject}'")
+                print(f"  - Added post from {day_name.lower()}: '{subject}'")
             else:
-                print(f"  - WARNING: No file found in '{day_name}' for {date_str}.")
+                print(f"  - WARNING: No file found in '{day_name.lower()}' for {date_str}.")
         else:
-            print(f"  - WARNING: Directory '{day_name}' does not exist in SYNC_PATH.")
+            print(f"  - WARNING: Directory '{day_name.lower()}' does not exist in SYNC_PATH.")
             continue
 
     digest_content = "\n\n---\n\n".join(digest_content_parts)
