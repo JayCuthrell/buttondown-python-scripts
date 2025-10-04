@@ -22,7 +22,7 @@ if not GOOGLE_API_KEY:
     raise ValueError("GOOGLE_API_KEY not found in .env file")
 
 genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-pro')
+model = genai.GenerativeModel('gemini-2.5-pro')
 
 def get_latest_sunday_buttondown_email():
     """
