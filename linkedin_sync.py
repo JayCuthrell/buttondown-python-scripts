@@ -112,7 +112,6 @@ def format_for_linkedin(subject, description, html_body, url):
     text = re.sub(r'\*\s*\[.*?\]\(.*?\)\s*\((.*?)\):\s*\*\*(.*?)\*\*', r'• \1: \2', text)
     text = re.sub(r'\[(.*?)\]\((.*?)\)', link_to_footnote, text)
     
-    # Process specific headers first to shorten them
     text = re.sub(r'#+\s*📈\s*Markets Monday.*', '📈 Markets Monday', text, flags=re.IGNORECASE)
     text = re.sub(r'#+\s*🔥\s*Hot Takes Tuesday.*', '🔥 Hot Takes Tuesday', text, flags=re.IGNORECASE)
     text = re.sub(r'#+\s*🤪\s*Wacky Wednesday.*', '🤪 Wacky Wednesday', text, flags=re.IGNORECASE)
@@ -120,10 +119,12 @@ def format_for_linkedin(subject, description, html_body, url):
     text = re.sub(r'#+\s*✅\s*Final Thoughts Friday.*', '✅ Final Thoughts Friday', text, flags=re.IGNORECASE)
     text = re.sub(r'#+\s*🔮\s*Sneak Peak Saturday.*', '🔮 Sneak Peak Saturday', text, flags=re.IGNORECASE)
     
-    # --- THE FIX IS HERE ---
-    # Now, add spacing to ANY remaining line that starts with # (like ### 2025)
     text = re.sub(r'^#+\s*(.+)$', r'\n\n\1\n', text, flags=re.MULTILINE)
     
+    # --- THE FIX IS HERE ---
+    # Intelligently add paragraph breaks after a sentence ends and a new one begins.
+    text = re.sub(r'([\.!\?])\s*([A-Z])', r'\1\n\n\2', text)
+
     text = re.sub(r'(\*\*|__)', '', text)
     text = re.sub(r'^\s*[\*\-]\s*', '• ', text, flags=re.MULTILINE)
     text = re.sub(r'#+\s*', '', text)
