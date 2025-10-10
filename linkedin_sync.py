@@ -97,11 +97,9 @@ def format_for_linkedin(subject, description, html_body, url):
 
     text = md(html_body, heading_style="ATX")
 
-    # --- THE FIX IS HERE ---
-    # Un-escape special characters that markdownify might have escaped in URLs and text
     text = text.replace('\\*', '*')
     text = text.replace('\\$', '$')
-    text = text.replace('\\_', '_') # Fix for underscores in URLs
+    text = text.replace('\\_', '_')
     
     text = re.sub(r'\{\{.*?\}\}', '', text, flags=re.IGNORECASE)
     text = re.sub(r'^(https?://[^\s]+)\s*$', '', text, flags=re.MULTILINE)
@@ -113,24 +111,21 @@ def format_for_linkedin(subject, description, html_body, url):
     
     text = re.sub(r'\*\s*\[.*?\]\(.*?\)\s*\((.*?)\):\s*\*\*(.*?)\*\*', r'• \1: \2', text)
     text = re.sub(r'\[(.*?)\]\((.*?)\)', link_to_footnote, text)
-
-    # Add spacing for sub-headers (####)
-    text = re.sub(r'#+\s*(Wacky Wonderful|Wayback|Whoa)', r'\n\1\n', text, flags=re.IGNORECASE)
     
-    text = re.sub(r'#+\s*(Last Week|This Week)', r'\n\n\1\n', text, flags=re.IGNORECASE)
-    text = re.sub(r'#+\s*📈\s*Markets Monday.*', '\n\n📈 Markets Monday\n', text, flags=re.IGNORECASE)
-    text = re.sub(r'#+\s*🔥\s*Hot Takes Tuesday.*', '\n\n🔥 Hot Takes Tuesday\n', text, flags=re.IGNORECASE)
-    text = re.sub(r'#+\s*🤪\s*Wacky Wednesday.*', '\n\n🤪 Wacky Wednesday\n', text, flags=re.IGNORECASE)
-    text = re.sub(r'#+\s*🔙\s*Throwback Thursday.*', '\n\n🔙 Throwback Thursday\n', text, flags=re.IGNORECASE)
-    text = re.sub(r'#+\s*✅\s*Final Thoughts Friday.*', '\n\n✅ Final Thoughts Friday\n', text, flags=re.IGNORECASE)
-    text = re.sub(r'#+\s*🔮\s*Sneak Peak Saturday.*', '\n\n🔮 Sneak Peak Saturday\n', text, flags=re.IGNORECASE)
-    text = re.sub(r'#+\s*#OpenToWork Weekly.*', '\n\n👀 #OpenToWork Weekly\n', text, flags=re.IGNORECASE)
+    # Process specific headers first to shorten them
+    text = re.sub(r'#+\s*📈\s*Markets Monday.*', '📈 Markets Monday', text, flags=re.IGNORECASE)
+    text = re.sub(r'#+\s*🔥\s*Hot Takes Tuesday.*', '🔥 Hot Takes Tuesday', text, flags=re.IGNORECASE)
+    text = re.sub(r'#+\s*🤪\s*Wacky Wednesday.*', '🤪 Wacky Wednesday', text, flags=re.IGNORECASE)
+    text = re.sub(r'#+\s*🔙\s*Throwback Thursday.*', '🔙 Throwback Thursday', text, flags=re.IGNORECASE)
+    text = re.sub(r'#+\s*✅\s*Final Thoughts Friday.*', '✅ Final Thoughts Friday', text, flags=re.IGNORECASE)
+    text = re.sub(r'#+\s*🔮\s*Sneak Peak Saturday.*', '🔮 Sneak Peak Saturday', text, flags=re.IGNORECASE)
     
-    text = re.sub(r'(\*\*|__)', '', text) # Remove bold markers
+    # --- THE FIX IS HERE ---
+    # Now, add spacing to ANY remaining line that starts with # (like ### 2025)
+    text = re.sub(r'^#+\s*(.+)$', r'\n\n\1\n', text, flags=re.MULTILINE)
     
-    # Handle both '*' and '-' for lists, and remove leading whitespace
+    text = re.sub(r'(\*\*|__)', '', text)
     text = re.sub(r'^\s*[\*\-]\s*', '• ', text, flags=re.MULTILINE)
-    
     text = re.sub(r'#+\s*', '', text)
     text = re.sub(r'\n{3,}', '\n\n', text).strip()
 
