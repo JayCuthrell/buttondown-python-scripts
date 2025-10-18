@@ -12,6 +12,7 @@ pip3 install -U python-dotenv
 pip3 install -U urllib3
 pip3 install -U feedparser 
 pip3 install -U python-frontmatter
+pip3 install -U markdown
 pip3 install -U markdownify
 pip3 install -U google-generativeai
 pip3 list
