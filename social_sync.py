@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 from markdownify import markdownify as md
 from urllib.parse import urljoin
-import markdown # <-- Import the markdown library
+import markdown
 
 # --- Load Environment Variables ---
 load_dotenv()
@@ -18,7 +18,7 @@ SITE_BASE_URL = os.getenv("SITE_BASE_URL")
 
 # LinkedIn Credentials
 LINKEDIN_ACCESS_TOKEN = os.getenv("LINKEDIN_ACCESS_TOKEN")
-LINKEDIN_AUTHOR = os.getenv("LINKEDIN_AUTHOR") 
+LINKEDIN_AUTHOR = os.getenv("LINKEDIN_AUTHOR")
 
 # GoToSocial Credentials
 GOTOSOCIAL_INSTANCE_URL = os.getenv("GOTOSOCIAL_INSTANCE_URL")
@@ -72,7 +72,7 @@ def check_url_status(url):
 
 # --- Buttondown Functions ---
 
-def post_to_buttondown(subject, html_body): # <-- UPDATED to accept html_body
+def post_to_buttondown(subject, body_content):
     """Posts content to Buttondown as a draft email."""
     print("\n--- 📮 Posting to Buttondown... ---")
     if not BUTTONDOWN_API_KEY:
@@ -81,8 +81,9 @@ def post_to_buttondown(subject, html_body): # <-- UPDATED to accept html_body
 
     headers = {"Authorization": f"Token {BUTTONDOWN_API_KEY}", "Content-Type": "application/json"}
     url = "https://api.buttondown.email/v1/emails"
-    # The payload now directly uses the provided HTML body
-    payload = {"subject": subject, "body": html_body, "status": "draft", "email_type": "premium"}
+    editor_mode_comment = "<!-- buttondown-editor-mode: plaintext -->"
+    final_body = f"{editor_mode_comment}{body_content}"
+    payload = {"subject": subject, "body": final_body, "status": "draft", "email_type": "premium"}
 
     try:
         response = requests.post(url, headers=headers, json=payload)
@@ -97,13 +98,11 @@ def post_to_buttondown(subject, html_body): # <-- UPDATED to accept html_body
 
 def format_for_linkedin(subject, description, markdown_content, url):
     """Converts markdown content to a LinkedIn-friendly plain text format."""
-    # Convert markdown to plain text by first converting to HTML, then stripping tags
     html = markdown.markdown(markdown_content)
-    text = ''.join(re.findall(r'<p>(.*?)</p>', html, re.DOTALL)) # extract text from p tags
-    text = re.sub(r'<[^>]+>', '', text) # strip any remaining tags
-    text = text.replace('\n', ' ').strip() # clean up newlines
+    text = ''.join(re.findall(r'<p>(.*?)</p>', html, re.DOTALL))
+    text = re.sub(r'<[^>]+>', '', text)
+    text = text.replace('\n', ' ').strip()
     
-    # Re-introduce paragraph breaks for readability
     paragraphs = markdown_content.split('\n\n')
     text = '\n\n'.join(paragraphs)
 
@@ -146,7 +145,6 @@ def post_to_linkedin(post_content):
 
 def format_for_gotosocial(subject, markdown_content, url):
     """Converts markdown content to a GoToSocial-friendly plain text format."""
-    # This logic can be simplified as GoToSocial handles plain text with newlines well
     paragraphs = markdown_content.split('\n\n')
     text = '\n\n'.join(paragraphs)
     return f"{subject}\n\n{text}\n\nRead the full post here: {url}"
@@ -203,7 +201,7 @@ def main():
         subject = post.metadata.get('title', 'No Subject')
         description = post.metadata.get('description', '')
         permalink = post.metadata.get('permalink', '')
-        markdown_content = post.content # Renamed for clarity
+        markdown_content = post.content
 
         if not permalink:
             print("❌ 'permalink' not found in frontmatter. Cannot verify URL.")
@@ -237,19 +235,20 @@ def main():
     do_gotosocial = '3' in platform_choice or '4' in platform_choice
 
     if do_buttondown:
-        # Convert Markdown to HTML for Buttondown
-        html_for_buttondown = markdown.markdown(markdown_content, extensions=['fenced_code'])
+        editor_mode_comment = ""
+        body_for_buttondown = f"{editor_mode_comment}\n{markdown_content}"
+
         print("\n" + "="*50)
         print("                DRY RUN for Buttondown")
         print("This will be created as a DRAFT in Buttondown:")
-        print("NOTE: Body will be sent as HTML to preserve formatting.")
+        print("NOTE: Body will be sent as raw Markdown with a plaintext-mode comment.")
         print("="*50 + "\n")
         print(f"Subject: {subject}")
-        print(f"Body (first 200 chars of source): {markdown_content.strip()[:200]}...")
+        print(f"Body (first 200 chars): {body_for_buttondown.strip()[:200]}...")
         print("\n" + "="*50)
         publish_choice = input(f"Do you want to create this draft in Buttondown? (y/N): ").lower()
         if publish_choice == 'y':
-            post_to_buttondown(subject, html_for_buttondown)
+            post_to_buttondown(subject, body_for_buttondown)
         else:
             print("\nPublishing to Buttondown cancelled.")
 
