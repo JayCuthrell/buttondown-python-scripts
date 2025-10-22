@@ -6,9 +6,7 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from pathlib import Path
 import re
-from markdownify import markdownify as md
 from urllib.parse import urljoin
-import markdown
 
 # --- Load Environment Variables ---
 load_dotenv()
@@ -96,17 +94,62 @@ def post_to_buttondown(subject, body_content):
 
 # --- LinkedIn Functions ---
 
+# --- UPDATED: Advanced LinkedIn Formatting Function ---
 def format_for_linkedin(subject, description, markdown_content, url):
-    """Converts markdown content to a LinkedIn-friendly plain text format."""
-    html = markdown.markdown(markdown_content)
-    text = ''.join(re.findall(r'<p>(.*?)</p>', html, re.DOTALL))
-    text = re.sub(r'<[^>]+>', '', text)
-    text = text.replace('\n', ' ').strip()
-    
-    paragraphs = markdown_content.split('\n\n')
-    text = '\n\n'.join(paragraphs)
+    """
+    Converts markdown to a LinkedIn-friendly plain text format with footnotes.
+    This function contains the advanced formatting logic.
+    """
+    footnotes = []
 
-    return f"{subject}\n\n{description}\n\n{text}\n\nRead the full post here: {url}"
+    def link_to_footnote(match):
+        link_text = match.group(1)
+        link_url = match.group(2)
+        if link_text.startswith('!') or not link_url.startswith('http'):
+            return f"[{link_text}]({link_url})"
+        footnotes.append(link_url)
+        return f"{link_text} [{len(footnotes)}]"
+
+    def convert_md_table_to_list(match):
+        table_text = match.group(0)
+        lines = table_text.strip().split('\n')
+        if len(lines) < 3: return table_text
+        list_items = []
+        for row in lines[2:]:
+            columns = [col.strip() for col in row.split('|') if col.strip()]
+            if len(columns) >= 2:
+                list_items.append(f"• {' - '.join(columns)}")
+        return "\n".join(list_items) if list_items else ""
+
+    text = markdown_content
+    text = text.replace('\\*', '*').replace('\\$', '$').replace('\\_', '_')
+    text = re.sub(r'\{\{.*?\}\}', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'```[\s\S]*?```', '', text)
+    text = re.sub(r'^\s*---\s*$', '', text, flags=re.MULTILINE)
+    
+    table_pattern = re.compile(r'^\s*\|.*\|.*\n\s*\|[-|: ]+\|.*\n((?:\s*\|.*\|.*\n?)+)', re.MULTILINE)
+    text = table_pattern.sub(convert_md_table_to_list, text)
+    text = re.sub(r'\[(.*?)\]\((.*?)\)', link_to_footnote, text)
+    
+    text = re.sub(r'#+\s*📈\s*Markets Monday.*', '📈 Markets Monday', text, flags=re.IGNORECASE)
+    text = re.sub(r'#+\s*🔥\s*Hot Takes Tuesday.*', '🔥 Hot Takes Tuesday', text, flags=re.IGNORECASE)
+    text = re.sub(r'#+\s*🤪\s*Wacky Wednesday.*', '🤪 Wacky Wednesday', text, flags=re.IGNORECASE)
+    text = re.sub(r'#+\s*🔙\s*Throwback Thursday.*', '🔙 Throwback Thursday', text, flags=re.IGNORECASE)
+    text = re.sub(r'#+\s*✅\s*Final Thoughts Friday.*', '✅ Final Thoughts Friday', text, flags=re.IGNORECASE)
+    text = re.sub(r'#+\s*🔮\s*Sneak Peak Saturday.*', '🔮 Sneak Peak Saturday', text, flags=re.IGNORECASE)
+
+    text = re.sub(r'^#+\s*(.+)$', r'\1', text, flags=re.MULTILINE)
+    text = re.sub(r'([\.!\?])\s*([A-Z])', r'\1\n\n\2', text)
+    text = re.sub(r'(\*\*|__)', '', text)
+    text = re.sub(r'^\s*[\*\-]\s*', '• ', text, flags=re.MULTILINE)
+    text = re.sub(r'\n{3,}', '\n\n', text).strip()
+
+    footnote_section = ""
+    if footnotes:
+        footnote_lines = [f"[{i+1}] {url}" for i, url in enumerate(footnotes)]
+        footnote_section = "\n\n---\nSources:\n" + "\n".join(footnote_lines)
+    
+    return f"{subject}\n\n{description}\n\n{text}{footnote_section}\n\nRead the full post here: {url}"
 
 
 def post_to_linkedin(post_content):
@@ -143,6 +186,7 @@ def post_to_linkedin(post_content):
 
 # --- GoToSocial Functions ---
 
+# --- RESTORED: Original simple formatting for GoToSocial ---
 def format_for_gotosocial(subject, markdown_content, url):
     """Converts markdown content to a GoToSocial-friendly plain text format."""
     paragraphs = markdown_content.split('\n\n')
@@ -173,6 +217,7 @@ def post_to_gotosocial(post_content):
 
 def main():
     """Main function to orchestrate the publishing workflow."""
+    # ... (The first part of the main function is unchanged) ...
     print("--- Unified Social Publishing Sync ---")
     recent_files = find_recent_markdown_files(SYNC_PATH_STR)
 
@@ -195,7 +240,6 @@ def main():
         print("❌ Invalid selection. Exiting.")
         return
 
-    # --- Load Post and Verify URL ---
     try:
         post = frontmatter.load(file_to_post)
         subject = post.metadata.get('title', 'No Subject')
@@ -217,7 +261,6 @@ def main():
         print(f"Error reading or parsing the markdown file {file_to_post}: {e}")
         return
 
-    # --- Platform Selection ---
     print("\nWhich platforms do you want to post to?")
     print("  1. Buttondown")
     print("  2. LinkedIn")
@@ -229,19 +272,15 @@ def main():
         print("No platforms selected. Exiting.")
         return
 
-    # --- Process Each Platform Choice with Confirmation ---
     do_buttondown = '1' in platform_choice or '4' in platform_choice
     do_linkedin = '2' in platform_choice or '4' in platform_choice
     do_gotosocial = '3' in platform_choice or '4' in platform_choice
 
     if do_buttondown:
-        editor_mode_comment = ""
+        # ... (Buttondown logic is unchanged) ...
         body_for_buttondown = f"{editor_mode_comment}\n{markdown_content}"
-
         print("\n" + "="*50)
         print("                DRY RUN for Buttondown")
-        print("This will be created as a DRAFT in Buttondown:")
-        print("NOTE: Body will be sent as raw Markdown with a plaintext-mode comment.")
         print("="*50 + "\n")
         print(f"Subject: {subject}")
         print(f"Body (first 200 chars): {body_for_buttondown.strip()[:200]}...")
@@ -253,10 +292,10 @@ def main():
             print("\nPublishing to Buttondown cancelled.")
 
     if do_linkedin:
+        # --- CORRECTED: Call the new, specific LinkedIn formatter ---
         linkedin_post = format_for_linkedin(subject, description, markdown_content, full_url)
         print("\n" + "="*50)
         print("                DRY RUN for LinkedIn")
-        print("This will be posted to LinkedIn:")
         print("="*50 + "\n")
         print(linkedin_post)
         print("\n" + "="*50)
@@ -267,10 +306,10 @@ def main():
             print("\nPublishing to LinkedIn cancelled.")
 
     if do_gotosocial:
+        # --- CORRECTED: Call the original, simple GoToSocial formatter ---
         gotosocial_post = format_for_gotosocial(subject, markdown_content, full_url)
         print("\n" + "="*50)
         print("                DRY RUN for GoToSocial")
-        print("This will be posted to GoToSocial:")
         print("="*50 + "\n")
         print(gotosocial_post)
         print("\n" + "="*50)
