@@ -101,12 +101,18 @@ def format_for_linkedin(subject, description, markdown_content, url):
     This function contains the advanced formatting logic.
     """
     footnotes = []
+    
+    # --- FIX 1: Check for and remove repeated description ---
+    text = markdown_content
+    if description and text.lstrip().startswith(description):
+        # Remove the description text and any following newlines
+        text = text.lstrip()[len(description):].lstrip('\n')
 
     def link_to_footnote(match):
-        link_text = match.group(1)
-        link_url = match.group(2)
+        link_text = match.group(1) # Group 1 is [text]
+        link_url = match.group(2)  # Group 2 is (url)
         if link_text.startswith('!') or not link_url.startswith('http'):
-            return f"[{link_text}]({link_url})"
+            return f"[{link_text}]({link_url})" # Ignore images or relative links
         footnotes.append(link_url)
         return f"{link_text} [{len(footnotes)}]"
 
@@ -121,7 +127,6 @@ def format_for_linkedin(subject, description, markdown_content, url):
                 list_items.append(f"• {' - '.join(columns)}")
         return "\n".join(list_items) if list_items else ""
 
-    text = markdown_content
     text = text.replace('\\*', '*').replace('\\$', '$').replace('\\_', '_')
     text = re.sub(r'\{\{.*?\}\}', '', text, flags=re.IGNORECASE)
     text = re.sub(r'```[\s\S]*?```', '', text)
@@ -129,8 +134,11 @@ def format_for_linkedin(subject, description, markdown_content, url):
     
     table_pattern = re.compile(r'^\s*\|.*\|.*\n\s*\|[-|: ]+\|.*\n((?:\s*\|.*\|.*\n?)+)', re.MULTILINE)
     text = table_pattern.sub(convert_md_table_to_list, text)
-    text = re.sub(r'\[(.*?)\]\((.*?)\)', link_to_footnote, text)
     
+    # --- FIX 2: More robust regex for links. Handles ')' in link text. ---
+    text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', link_to_footnote, text)
+    
+    # Clean up daily-themed headings (adjust patterns as needed)
     text = re.sub(r'#+\s*📈\s*Markets Monday.*', '📈 Markets Monday', text, flags=re.IGNORECASE)
     text = re.sub(r'#+\s*🔥\s*Hot Takes Tuesday.*', '🔥 Hot Takes Tuesday', text, flags=re.IGNORECASE)
     text = re.sub(r'#+\s*🤪\s*Wacky Wednesday.*', '🤪 Wacky Wednesday', text, flags=re.IGNORECASE)
@@ -138,11 +146,16 @@ def format_for_linkedin(subject, description, markdown_content, url):
     text = re.sub(r'#+\s*✅\s*Final Thoughts Friday.*', '✅ Final Thoughts Friday', text, flags=re.IGNORECASE)
     text = re.sub(r'#+\s*🔮\s*Sneak Peak Saturday.*', '🔮 Sneak Peak Saturday', text, flags=re.IGNORECASE)
 
-    text = re.sub(r'^#+\s*(.+)$', r'\1', text, flags=re.MULTILINE)
-    text = re.sub(r'([\.!\?])\s*([A-Z])', r'\1\n\n\2', text)
-    text = re.sub(r'(\*\*|__)', '', text)
+    # --- FIX 3: Better heading formatting to add spacing (from linkedin_sync.py) ---
+    text = re.sub(r'^#+\s*(.+)$', r'\n\n\1\n', text, flags=re.MULTILINE)
+    
+    text = re.sub(r'([\.!\?])\s*([A-Z])', r'\1\n\n\2', text) # Add paragraph breaks
+    text = re.sub(r'(\*\*|__)', '', text) # Remove bold/italic
+    
+    # --- FIX 4: Convert bullet points (this should work correctly now) ---
     text = re.sub(r'^\s*[\*\-]\s*', '• ', text, flags=re.MULTILINE)
-    text = re.sub(r'\n{3,}', '\n\n', text).strip()
+    
+    text = re.sub(r'\n{3,}', '\n\n', text).strip() # Clean up extra newlines
 
     footnote_section = ""
     if footnotes:
@@ -150,7 +163,6 @@ def format_for_linkedin(subject, description, markdown_content, url):
         footnote_section = "\n\n---\nSources:\n" + "\n".join(footnote_lines)
     
     return f"{subject}\n\n{description}\n\n{text}{footnote_section}\n\nRead the full post here: {url}"
-
 
 def post_to_linkedin(post_content):
     """Posts the given content to LinkedIn."""
