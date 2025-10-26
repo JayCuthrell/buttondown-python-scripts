@@ -11,6 +11,7 @@ from urllib.parse import urljoin
 # --- Load Environment Variables ---
 load_dotenv()
 BUTTONDOWN_API_KEY = os.getenv("BUTTONDOWN_API_KEY")
+BUTTONDOWN_EDIT = os.getenv("BUTTONDOWN_EDIT")
 SYNC_PATH_STR = os.getenv("SYNC_PATH")
 SITE_BASE_URL = os.getenv("SITE_BASE_URL")
 
@@ -79,7 +80,7 @@ def post_to_buttondown(subject, body_content):
 
     headers = {"Authorization": f"Token {BUTTONDOWN_API_KEY}", "Content-Type": "application/json"}
     url = "https://api.buttondown.email/v1/emails"
-    editor_mode_comment = "<!-- buttondown-editor-mode: plaintext -->"
+    editor_mode_comment = f"{BUTTONDOWN_EDIT}"
     final_body = f"{editor_mode_comment}{body_content}"
     payload = {"subject": subject, "body": final_body, "status": "draft", "email_type": "premium"}
 
@@ -290,6 +291,7 @@ def main():
 
     if do_buttondown:
         # ... (Buttondown logic is unchanged) ...
+        editor_mode_comment = f"{BUTTONDOWN_EDIT}"
         body_for_buttondown = f"{editor_mode_comment}\n{markdown_content}"
         print("\n" + "="*50)
         print("                DRY RUN for Buttondown")
