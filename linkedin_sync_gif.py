@@ -1,3 +1,5 @@
+from pathlib import Path # --- NEW ---
+import glob
 import requests
 import json
 from dotenv import load_dotenv
@@ -178,104 +180,256 @@ def post_to_linkedin(post_content):
     except requests.exceptions.RequestException as e:
         print(f"\n❌ Error posting to LinkedIn: {e}\n   Response: {e.response.text}")
 
+def is_emoji(char):
+    """
+    Checks if a character is in a common emoji Unicode range.
+    This is more reliable than font.getmask().
+    """
+    # U+1F300 to U+1F5FF (Misc Symbols and Pictographs, includes 🔮 1F52E, 📈 1F4C8, 🔥 1F525, 🔙 1F519)
+    if '\U0001F300' <= char <= '\U0001F5FF':
+        return True
+    # U+1F600 to U+1F64F (Emoticons)
+    if '\U0001F600' <= char <= '\U0001F64F':
+        return True
+    # U+1F900 to U+1F9FF (Supplemental Symbols, includes 🤪 1F92A)
+    if '\U0001F900' <= char <= '\U0001F9FF':
+        return True
+    # U+2600 to U+27BF (Misc Symbols, includes ✅ 2705)
+    if '\u2600' <= char <= '\u27BF':
+        return True
+    return False
 
-# --- NEW ---
-def find_system_font(font_names):
-    """Tries to find a usable .ttf font file from a list of common names/paths."""
-    common_paths = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", # Linux
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", # Linux
-        "/System/Library/Fonts/Supplemental/Arial.ttf", # macOS
-        "C:\\Windows\\Fonts\\arial.ttf", # Windows
-        "arial.ttf" # Check current directory
+# --- REVISED FUNCTION ---
+def find_font(glob_pattern, name_for_log=""):
+    """
+    Finds a single font file matching a glob pattern across common system dirs.
+    """
+    if not name_for_log:
+        name_for_log = glob_pattern
+
+    # --- FIX #1: Use the CORRECT hardcoded path with spaces ---
+    if glob_pattern == 'Apple Color Emoji.ttc':
+        apple_path = '/System/Library/Fonts/Apple Color Emoji.ttc'
+        if Path(apple_path).is_file():
+            print(f"✅ Found {name_for_log} font at: {apple_path} (Hardcoded path)")
+            return apple_path
+        # If it's not there, we'll fall through to the glob search below.
+
+    font_dirs_to_search = [
+        os.path.expanduser('~/Library/Fonts/'), # Mac User
+        '/Library/Fonts/',                        # Mac System
+        '/System/Library/Fonts/',                 # Mac System
+        '/System/Library/Fonts/Core/',            # Mac System (alternate)
+        '/usr/share/fonts/truetype/noto/',        # Linux (Ubuntu)
+        '/usr/share/fonts/noto/',                 # Linux (Arch)
+        'C:\\Windows\\Fonts\\'                    # Windows
     ]
     
-    for name in font_names + common_paths:
+    all_found_fonts = []
+    for font_dir in font_dirs_to_search:
+        # Use recursive glob (**) to find files in subdirectories
+        search_path = os.path.join(font_dir, '**', glob_pattern)
         try:
-            # Test loading the font
-            ImageFont.truetype(name, size=10)
-            return name
-        except (IOError, OSError):
-            continue
+            # Set recursive=True to search subfolders
+            found_fonts = glob.glob(search_path, recursive=True)
+            if found_fonts:
+                all_found_fonts.extend(found_fonts)
+        except Exception as e:
+            # Fallback for older python versions
+            try:
+                search_path_non_recursive = os.path.join(font_dir, glob_pattern)
+                found_fonts_non_recursive = glob.glob(search_path_non_recursive)
+                if found_fonts_non_recursive:
+                    all_found_fonts.extend(found_fonts_non_recursive)
+            except Exception:
+                pass # Ignore errors from this path
+
+    if all_found_fonts:
+        all_found_fonts.sort()
+        
+        # --- FIX #2: Prioritize the *main* Noto Sans font over variants ---
+        if 'Noto*Sans*Regular' in glob_pattern:
+            for f in all_found_fonts:
+                # Look for the plainest, most default version
+                if f.endswith('NotoSans-Regular.ttf'):
+                    print(f"✅ Found {name_for_log} font at: {f} (Prioritized)")
+                    return f
+
+        # If no priority match, just use the first one
+        font_path = all_found_fonts[0]
+        print(f"✅ Found {name_for_log} font at: {font_path}")
+        return font_path
     
-    print("⚠️  No system fonts found. Falling back to default built-in font (may be small).")
-    return None # Will cause Pillow to use its default
+    print(f"⚠️  WARNING: Could not find any {name_for_log} font for pattern '{glob_pattern}'")
+    return None
 
+# --- REVISED FUNCTION ---
+def draw_text_with_fallback(draw, xy, text, fill, text_font, emoji_font_path, font_size):
+    """
+    Draws text char-by-char, trying two different sizes for the emoji font
+    if a glyph is missing from the main text_font.
+    """
+    current_x = xy[0]
+    y_pos = xy[1]
+    emoji_font_instance = None # We will load this if we need it
 
-# --- NEW ---
+    for char in text:
+        font_to_use = text_font
+        
+        if is_emoji(char) and emoji_font_path:
+            # This is an emoji, so we *must* try to use the emoji font
+            if not emoji_font_instance:
+                font_index = 0 if emoji_font_path.endswith(".ttc") else 0
+                try:
+                    # --- THIS IS THE FIX (Step 1) ---
+                    # First, try to load at the *exact* calculated size
+                    emoji_font_instance = ImageFont.truetype(emoji_font_path, size=font_size, index=font_index)
+                except (IOError, OSError) as e:
+                    # --- THIS IS THE FIX (Step 2) ---
+                    # If that fails, try the 'known-good' 96
+                    if "invalid pixel size" in str(e):
+                        try:
+                            emoji_font_instance = ImageFont.truetype(emoji_font_path, size=96, index=font_index)
+                        except (IOError, OSError) as e2:
+                            print(f"--- DEBUG: Failed to load emoji font at size {font_size} AND 96: {e2} ---")
+                            emoji_font_instance = text_font # Give up
+                    else:
+                        # A different error (e.g., file not found)
+                        print(f"--- DEBUG: Failed to load emoji font: {e} ---")
+                        emoji_font_instance = text_font # Give up
+            
+            font_to_use = emoji_font_instance
+        
+        # Draw the single character
+        draw.text((current_x, y_pos), char, font=font_to_use, fill=fill)
+        
+        # Increment X position
+        try:
+            current_x += font_to_use.getlength(char)
+        except AttributeError:
+            bbox = font_to_use.getbbox(char)
+            current_x += bbox[2] - bbox[0]
+
+# --- REVISED FUNCTION ---
 def create_scrolling_gif(
     text,
     output_filename="post.gif",
     width=1200,
     height=628,
-    bg_color="#3498db", # A nice blue
+    bg_color="#e7973c", # A nice orange
     text_color="#FFFFFF" # White
 ):
     """
-    Generates an animated GIF with scrolling text.
+    Generates an animated GIF with scrolling text, using separate fonts
+    for text and emoji.
     """
     
-    # --- 1. Setup Font ---
-    # Make font size relative to image height
-    font_size = int(height * 0.15)
+    # --- 1. Setup Fonts (REVISED) ---
+    font_size = int(height * 0.15) # This will be ~94
     
-    # Try to find a good system font
-    font_path = find_system_font(["Arial", "Helvetica", "DejaVuSans"])
+    # Find the font PATHS
+    text_font_path = find_font('*Noto*Sans*Regular*.ttf', "Text")
     
+    # Prioritize Apple's native font
+    emoji_font_path = find_font('Apple Color Emoji.ttc', "Apple Emoji")
+    
+    # Fallback for Linux/other systems if Apple Emoji isn't found
+    if not emoji_font_path:
+        emoji_font_path = find_font('*Noto*Color*Emoji*.ttf', "Emoji")
+    
+    text_font = None
+    
+    # We ONLY load the text_font here.
     try:
-        if font_path:
-            font = ImageFont.truetype(font_path, size=font_size)
+        if text_font_path:
+            text_font = ImageFont.truetype(text_font_path, size=font_size)
         else:
-            # Fallback to default bitmap font if no .ttf is found
-            font = ImageFont.load_default()
-            # Adjust size for default font
-            font_size = 20
-    except Exception as e:
-        print(f"Error loading font: {e}. Falling back to default.")
-        font = ImageFont.load_default()
+            print("Falling back to default font for TEXT")
+            text_font = ImageFont.load_default()
+            font_size = 20 # Adjust size for default
+    except (IOError, OSError) as e:
+        print(f"CRITICAL Error loading text font: {e}. Falling back to default.")
+        text_font = ImageFont.load_default()
         font_size = 20
+        
+    if not emoji_font_path:
+        print("No emoji font path found, will render '□' for emoji.")
+        emoji_font_path = text_font_path
 
     # --- 2. Calculate Dimensions ---
-    # Use textbbox for more accurate size calculation
-    try:
-        # Get bounding box [left, top, right, bottom]
-        bbox = ImageDraw.Draw(Image.new("RGB", (1, 1))).textbbox((0, 0), text, font=font)
-        text_width = bbox[2] - bbox[0]
-        text_height = bbox[3] - bbox[1]
-    except AttributeError: # Fallback for older Pillow versions
-        text_width, text_height = ImageDraw.Draw(Image.new("RGB", (1, 1))).textsize(text, font=font)
-        
-    y_pos = (height - text_height) // 2
+    total_text_width = 0
+    text_height = 0
+    temp_emoji_font = None # To cache the loaded font
     
-    # We create a "loop" by having the text follow itself
-    # Gap is 1/3 of the image width
+    for char in text:
+        try:
+            # Use is_emoji() to decide which font to use for calculation
+            if not is_emoji(char):
+                # This is a regular text character
+                total_text_width += text_font.getlength(char)
+                bbox = text_font.getbbox(char)
+                text_height = max(text_height, bbox[3] - bbox[1])
+            
+            # This is an emoji character
+            elif emoji_font_path:
+                if not temp_emoji_font: # Load it once
+                    font_index = 0 if emoji_font_path.endswith(".ttc") else 0
+                    try:
+                        # --- THIS IS THE FIX (Step 1) ---
+                        temp_emoji_font = ImageFont.truetype(emoji_font_path, size=font_size, index=font_index)
+                    except (IOError, OSError) as e:
+                        # --- THIS IS THE FIX (Step 2) ---
+                        if "invalid pixel size" in str(e):
+                            try:
+                                temp_emoji_font = ImageFont.truetype(emoji_font_path, size=96, index=font_index)
+                            except (IOError, OSError) as e2:
+                                print(f"--- DEBUG (Calc): Failed to load emoji font at size {font_size} AND 96: {e2} ---")
+                                temp_emoji_font = text_font # Give up
+                        else:
+                            print(f"--- DEBUG (Calc): Failed to load emoji font: {e} ---")
+                            temp_emoji_font = text_font # Give up
+
+                total_text_width += temp_emoji_font.getlength(char)
+                bbox = temp_emoji_font.getbbox(char)
+                text_height = max(text_height, bbox[3] - bbox[1])
+            else:
+                # Tofu (no emoji font path)
+                total_text_width += text_font.getlength(char)
+        
+        except Exception as e:
+             # Fallback for errors on this char
+             print(f"--- DEBUG: Error calculating width for char '{char}': {e} ---")
+             total_text_width += text_font.getlength(char)
+
+    y_pos = (height - text_height) // 2
     gap = width // 3
-    total_scroll_width = text_width + gap
+    total_scroll_width = int(total_text_width) + gap
     
     # --- 3. Animation Parameters ---
+    # --- TYPO FIX ---
     scroll_speed = 10 # Pixels per frame
     frame_duration_ms = 40 # 40ms = 25 FPS
     
-    # Number of frames for one full loop
+    if total_scroll_width <= 0:
+        print("Error: Calculated text width is zero. Cannot generate animation.")
+        return None
+        
     num_frames = total_scroll_width // scroll_speed
-    
     frames = []
 
     # --- 4. Generate Frames ---
     print(f"Generating {num_frames} frames for animation...")
     for i in range(num_frames):
-        # Create a new blank frame
         img = Image.new('RGB', (width, height), color=bg_color)
         d = ImageDraw.Draw(img)
         
-        # Calculate the X position for this frame
         current_x_pos = -(i * scroll_speed)
         
-        # Draw the main text
-        d.text((current_x_pos, y_pos), text, font=font, fill=text_color)
+        # Pass font_size to the helper
+        draw_text_with_fallback(d, (current_x_pos, y_pos), text, text_color, text_font, emoji_font_path, font_size)
         
-        # Draw the "next" text that follows it, creating the loop
-        d.text((current_x_pos + total_scroll_width, y_pos), text, font=font, fill=text_color)
+        # Draw the "next" text that follows it
+        draw_text_with_fallback(d, (current_x_pos + total_scroll_width, y_pos), text, text_color, text_font, emoji_font_path, font_size)
         
         frames.append(img)
     
@@ -287,14 +441,13 @@ def create_scrolling_gif(
             append_images=frames[1:],
             duration=frame_duration_ms,
             loop=0, # 0 = loop forever
-            optimize=True # Try to reduce file size
+            optimize=True
         )
         print(f"✅ GIF saved as '{output_filename}'")
         return output_filename
     except Exception as e:
         print(f"❌ Error saving GIF: {e}")
         return None
-
 
 # --- NEW ---
 def post_to_linkedin_with_media(post_content, media_filename, subject):
