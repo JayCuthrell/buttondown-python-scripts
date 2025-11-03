@@ -34,7 +34,7 @@ def get_latest_sunday_buttondown_email():
     }
     
     # Calculate the date 14 days ago to ensure we capture at least two weeks of emails.
-    two_weeks_ago = datetime.now(timezone.utc) - timedelta(days=14)
+    two_weeks_ago = datetime.now(timezone.utc) - timedelta(days=7)
     
     # Format the date into a simple YYYY-MM-DD format.
     formatted_date = two_weeks_ago.strftime('%Y-%m-%d')

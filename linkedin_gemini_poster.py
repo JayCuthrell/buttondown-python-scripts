@@ -40,15 +40,108 @@ BUTTONDOWN_BASE_URL = "https://api.buttondown.email"
 BUTTONDOWN_ENDPOINT = "/emails"
 
 
-# === Function from linkedin_post_generator.py ===
+# === Add this import at the top of your file with the other imports ===
+try:
+    # Built-in to Python 3.9+
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+except ImportError:
+    # Fallback for Python < 3.9
+    print("Warning: 'zoneinfo' not found. Installing 'pytz' as a fallback.")
+    try:
+        import pytz
+        # Create a simple wrapper to make pytz compatible with zoneinfo
+        class ZoneInfo:
+            def __init__(self, key):
+                self.key = key
+                self.tz = pytz.timezone(key)
+            
+            def __call__(self, *args, **kwargs):
+                return self.tz
+        
+        class ZoneInfoNotFoundError(Exception):
+            pass
+        
+    except ImportError:
+        print("Error: Please install 'pytz' (pip install pytz) for timezone support on Python < 3.9.")
+        sys.exit(1)
+
+
+# 
+# 
+
 def get_latest_sunday_buttondown_email():
     """
-    Fetches the most recent public email from Buttondown that was published on a Sunday.
-    This version filters by a date range to ensure we capture the most recent Sunday.
+    Fetches the most recent public email from Buttondown that was published on a Sunday
+    IN THE USER'S LOCAL TIMEZONE.
     """
     headers = {
         "Authorization": f"Token {BUTTONDOWN_API_KEY}",
     }
+    
+    # --- Define your local timezone ---
+    # Change "America/New_York" to your specific timezone if needed.
+    # List of names: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+    YOUR_TIMEZONE = "America/New_York" 
+    try:
+        local_tz = ZoneInfo(YOUR_TIMEZONE)
+    except ZoneInfoNotFoundError:
+        print(f"❌ Error: Timezone '{YOUR_TIMEZONE}' not found. Defaulting to UTC.")
+        local_tz = timezone.utc
+    
+    # Calculate the date 14 days ago to ensure we capture at least two weeks of emails.
+    two_weeks_ago = datetime.now(timezone.utc) - timedelta(days=14)
+    
+    # Format the date into a simple YYYY-MM-DD format.
+    formatted_date = two_weeks_ago.strftime('%Y-%m-%d')
+    
+    # Use the publish_date__start filter to get all emails published in the last 14 days.
+    FILTERS = f"?ordering=-publish_date&type=public&publish_date__start={formatted_date}"
+
+# === Add this import at the top of your file with the other imports ===
+try:
+    # Built-in to Python 3.9+
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+except ImportError:
+    # Fallback for Python < 3.9
+    print("Warning: 'zoneinfo' not found. Installing 'pytz' as a fallback.")
+    try:
+        import pytz
+        # Create a simple wrapper to make pytz compatible with zoneinfo
+        class ZoneInfo:
+            def __init__(self, key):
+                self.key = key
+                self.tz = pytz.timezone(key)
+            
+            def __call__(self, *args, **kwargs):
+                return self.tz
+        
+        class ZoneInfoNotFoundError(Exception):
+            pass
+        
+    except ImportError:
+        print("Error: Please install 'pytz' (pip install pytz) for timezone support on Python < 3.9.")
+        sys.exit(1)
+
+
+# === Replace your old function with this new one ===
+def get_latest_sunday_buttondown_email():
+    """
+    Fetches the most recent public email from Buttondown that was published on a Sunday
+    IN THE USER'S LOCAL TIMEZONE.
+    """
+    headers = {
+        "Authorization": f"Token {BUTTONDOWN_API_KEY}",
+    }
+    
+    # --- Define your local timezone ---
+    # Change "America/New_York" to your specific timezone if needed.
+    # List of names: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+    YOUR_TIMEZONE = "America/New_York" 
+    try:
+        local_tz = ZoneInfo(YOUR_TIMEZONE)
+    except ZoneInfoNotFoundError:
+        print(f"❌ Error: Timezone '{YOUR_TIMEZONE}' not found. Defaulting to UTC.")
+        local_tz = timezone.utc
     
     # Calculate the date 14 days ago to ensure we capture at least two weeks of emails.
     two_weeks_ago = datetime.now(timezone.utc) - timedelta(days=14)
@@ -71,19 +164,24 @@ def get_latest_sunday_buttondown_email():
             return None
 
         # Iterate through the fetched emails to find the most recent one published on a Sunday.
+        print(f"ℹ️  Checking for Sunday posts relative to '{YOUR_TIMEZONE}' timezone...")
         for email in emails:
             publish_date_str = email.get('publish_date')
             if publish_date_str:
                 # The 'Z' at the end of the timestamp indicates UTC. `fromisoformat` can handle this.
-                publish_date = datetime.fromisoformat(publish_date_str.replace('Z', '+00:00'))
+                utc_publish_date = datetime.fromisoformat(publish_date_str.replace('Z', '+00:00'))
                 
-                # Check if the day of the week is Sunday.
+                # --- Convert from UTC to your local timezone ---
+                local_publish_date = utc_publish_date.astimezone(local_tz)
+                
+                # --- Check the weekday of the *local* date ---
                 # Monday is 0 and Sunday is 6.
-                if publish_date.weekday() == 6:
-                    print(f"✅ Found latest Sunday email: '{email.get('subject')}' (Published: {publish_date.date()})")
+                if local_publish_date.weekday() == 6:
+                    print(f"✅ Found latest Sunday email: '{email.get('subject')}'")
+                    print(f"   (Published UTC: {utc_publish_date.strftime('%Y-%m-%d %H:%M')}, Local: {local_publish_date.strftime('%Y-%m-%d %H:%M')})")
                     return email
 
-        print("⏹️ No Sunday email found in the recent batch of emails.")
+        print(f"⏹️ No Sunday email (in timezone {YOUR_TIMEZONE}) found in the recent batch.")
         return None
 
     except requests.exceptions.RequestException as e:
@@ -92,6 +190,7 @@ def get_latest_sunday_buttondown_email():
     except json.JSONDecodeError:
         print("❌ Error decoding JSON response from Buttondown.")
         return None
+
 
 # === Function from linkedin_post_generator.py ===
 def summarize_with_gemini(email_subject, email_body, email_url):
