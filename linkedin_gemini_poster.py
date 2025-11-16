@@ -215,6 +215,8 @@ def summarize_with_gemini(email_subject, email_body, email_url):
     - Include an exhaustive alphabetically ordered list of each and every one of company names referenced in the techmeme.com linked articles.
     - Include the link to the post {email_url} 
     - Do not use markdown style formatting such as asterisks or stars *
+    - Do not use the word masterclass or masterclasses anywhere in the post.
+    - The entire post must be less than 1300 characters to fit LinkedIn's limits
 
     ---
     Email Subject: {email_subject}
