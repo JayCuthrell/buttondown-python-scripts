@@ -32,8 +32,7 @@ if not all([BUTTONDOWN_API_KEY, GOOGLE_API_KEY, LINKEDIN_ACCESS_TOKEN, LINKEDIN_
 
 # --- Google Gemini API Configuration ---
 genai.configure(api_key=GOOGLE_API_KEY)
-# Using 1.5 Pro as a robust and widely available model
-model = genai.GenerativeModel('gemini-2.5-pro') 
+model = genai.GenerativeModel('gemini-3-pro-preview') 
 
 # --- Buttondown API Configuration ---
 BUTTONDOWN_BASE_URL = "https://api.buttondown.email"
