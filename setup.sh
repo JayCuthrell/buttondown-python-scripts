@@ -16,5 +16,6 @@ pip3 install -U markdown
 pip3 install -U markdownify
 pip3 install -U pytz
 pip3 install -U pillow
+pip3 install -U atproto
 pip3 install -U google-generativeai
 pip3 list
